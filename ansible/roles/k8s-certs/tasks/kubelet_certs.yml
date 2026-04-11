@@ -1,0 +1,99 @@
+---
+# =============================================================================
+# Kubelet Certificates - Direct Issuance
+# =============================================================================
+# Issues kubelet server and client certs per node.
+# Each node gets unique certs with the node name in CN and SANs.
+# =============================================================================
+
+# Define node ips for easy lookup
+- name: Set node IP based on hostname
+  ansible.builtin.set_fact:
+    node_ip: "{{ master_ips[inventory_hostname] | default(worker_ips[inventory_hostname]) }}"
+
+# -----------------------------------------------------------------------------
+# Kubelet Server Certificate (for kubelet to serve API)
+# -----------------------------------------------------------------------------
+- name: Issue kubelet server certificate for {{ inventory_hostname }}
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/kubelet-server"
+    data:
+      common_name: "system:node:{{ inventory_hostname }}"
+      alt_names: "localhost,{{ inventory_hostname }}"
+      ip_sans: "{{ node_ip }},127.0.0.1"
+      ttl: "{{ cert_ttl }}"
+  register: kubelet_server_cert
+  delegate_to: localhost
+
+- name: Deploy kubelet server certificate
+  ansible.builtin.copy:
+    content: "{{ kubelet_server_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/kubelet.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kubelet server key
+  ansible.builtin.copy:
+    content: "{{ kubelet_server_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/kubelet.key"
+    mode: '0600'
+  become: true
+
+# -----------------------------------------------------------------------------
+# Kubelet Client Certificate (for kubelet to authenticate to apiserver)
+# -----------------------------------------------------------------------------
+- name: Issue kubelet client certificate for {{ inventory_hostname }}
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/kubelet-client"
+    data:
+      common_name: "system:node:{{ inventory_hostname }}"
+      ttl: "{{ cert_ttl }}"
+  register: kubelet_client_cert
+  delegate_to: localhost
+
+- name: Deploy kubelet client certificate
+  ansible.builtin.copy:
+    content: "{{ kubelet_client_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/kubelet-client.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kubelet client key
+  ansible.builtin.copy:
+    content: "{{ kubelet_client_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/kubelet-client.key"
+    mode: '0600'
+  become: true
+
+# -----------------------------------------------------------------------------
+# Kube-Proxy Certificate (shared across all nodes running kube-proxy)
+# -----------------------------------------------------------------------------
+- name: Issue kube-proxy certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/kube-proxy"
+    data:
+      common_name: "system:kube-proxy"
+      ttl: "{{ cert_ttl }}"
+  register: kube_proxy_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy kube-proxy certificate
+  ansible.builtin.copy:
+    content: "{{ kube_proxy_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/kube-proxy.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kube-proxy key
+  ansible.builtin.copy:
+    content: "{{ kube_proxy_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/kube-proxy.key"
+    mode: '0600'
+  become: true

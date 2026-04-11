@@ -1,0 +1,50 @@
+---
+# Playbook to deploy etcd cluster
+# Run with: ansible-playbook -i inventory/homelab.yml playbooks/etcd-cluster.yml
+
+- name: Deploy etcd cluster
+  hosts: etcd_servers
+  gather_facts: true
+  vars_files:
+    - ../roles/etcd/vars/main.yml
+  roles:
+    - role: ../roles/etcd
+
+- name: Verify etcd cluster health
+  hosts: etcd_servers[0]
+  gather_facts: false
+  vars_files:
+    - ../roles/etcd/vars/main.yml
+  tasks:
+    - name: Wait for cluster to stabilize
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Check etcd cluster health
+      ansible.builtin.shell: |
+        ETCDCTL_API=3 etcdctl endpoint health \
+          --endpoints=https://etcd-1:2379 \
+          --cacert={{ etcd_cert_dir }}/ca.crt \
+          --cert={{ etcd_cert_dir }}/healthcheck-client.crt \
+          --key={{ etcd_cert_dir }}/healthcheck-client.key
+      register: etcd_health
+      become: true
+
+    - name: Display cluster health
+      ansible.builtin.debug:
+        var: etcd_health.stdout_lines
+
+    - name: Check etcd cluster member list
+      ansible.builtin.shell: |
+        ETCDCTL_API=3 etcdctl member list \
+          --endpoints=https://127.0.0.1:2379 \
+          --cacert={{ etcd_cert_dir }}/ca.crt \
+          --cert={{ etcd_cert_dir }}/healthcheck-client.crt \
+          --key={{ etcd_cert_dir }}/healthcheck-client.key \
+          --write-out=table
+      register: etcd_members
+      become: true
+
+    - name: Display cluster members
+      ansible.builtin.debug:
+        var: etcd_members.stdout_lines

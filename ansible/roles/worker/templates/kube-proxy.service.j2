@@ -1,0 +1,16 @@
+[Unit]
+Description=Kubernetes Kube Proxy
+Documentation=https://kubernetes.io/docs/reference/command-line-tools-reference/kube-proxy/
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/kube-proxy \
+  --config={{ k8s_config_dir }}/kube-proxy-config.yaml \
+  --v=2
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

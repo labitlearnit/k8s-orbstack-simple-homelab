@@ -1,0 +1,31 @@
+---
+# Binary versions (must match ansible role vars)
+etcd_version: "3.5.12"
+k8s_version: "1.32.0"
+containerd_version: "1.7.24"
+runc_version: "1.2.4"
+calico_version: "3.28.0"
+
+# Download URLs
+k8s_download_url: "https://dl.k8s.io/release/v{{ k8s_version }}/bin/linux/arm64"
+etcd_download_url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+containerd_download_url: "https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+runc_download_url: "https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.arm64"
+calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/v{{ calico_version }}/manifests/calico.yaml"
+
+# Local cache directory (on Mac)
+bin_dir: "{{ lookup('env', 'HOME') }}/k8s-orbstack-simple-homelab/k8s-binaries"
+
+# K8s binaries list
+k8s_binaries:
+  - kube-apiserver
+  - kube-controller-manager
+  - kube-scheduler
+  - kubectl
+  - kubelet
+  - kube-proxy
+
+# Jump server cache directories
+jump_k8s_bin_dir: "/tmp/k8s-binaries"
+jump_etcd_cache_dir: "/tmp/etcd-cache"
+jump_containerd_cache_dir: "/tmp/containerd-cache"

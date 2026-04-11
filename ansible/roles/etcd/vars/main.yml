@@ -1,0 +1,18 @@
+---
+# etcd version
+etcd_version: "3.5.12"
+
+# etcd data directory
+etcd_data_dir: "/var/lib/etcd"
+
+# etcd certificate paths
+etcd_cert_dir: "/etc/etcd/pki"
+
+# etcd ports
+etcd_client_port: 2379
+etcd_peer_port: 2380
+
+# Cluster members - must match inventory hostnames
+etcd_cluster_members:
+  - name: etcd-1
+    ip: "{{ network_prefix }}.21"

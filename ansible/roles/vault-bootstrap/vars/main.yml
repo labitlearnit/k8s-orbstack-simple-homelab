@@ -1,0 +1,29 @@
+---
+# Vault version to install
+vault_version: "1.15.4"
+
+# Vault user/group
+vault_user: vault
+vault_group: vault
+
+# Directories
+vault_config_dir: /etc/vault.d
+vault_data_dir: /opt/vault/data
+
+# Network settings
+vault_address: "0.0.0.0"
+vault_port: 8200
+vault_cluster_port: 8201
+
+# TLS settings (disabled for initial bootstrap, enable later via Terraform)
+vault_tls_disable: true
+
+# Storage backend (file for simplicity, can migrate to raft later)
+vault_storage_backend: file
+
+# Initialize settings
+vault_key_shares: 5
+vault_key_threshold: 3
+
+# Local path to store vault credentials (on ansible controller)
+vault_credentials_dir: "{{ playbook_dir }}/../.vault-credentials"

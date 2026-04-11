@@ -1,0 +1,34 @@
+[Unit]
+Description=etcd
+Documentation=https://github.com/etcd-io/etcd
+After=network.target
+
+[Service]
+Type=notify
+User=etcd
+Group=etcd
+ExecStart=/usr/local/bin/etcd \
+  --name={{ inventory_hostname }} \
+  --data-dir={{ etcd_data_dir }} \
+  --listen-client-urls=https://{{ node_ip }}:{{ etcd_client_port }},https://127.0.0.1:{{ etcd_client_port }} \
+  --advertise-client-urls=https://{{ inventory_hostname }}:{{ etcd_client_port }} \
+  --listen-peer-urls=https://{{ node_ip }}:{{ etcd_peer_port }} \
+  --initial-advertise-peer-urls=https://{{ inventory_hostname }}:{{ etcd_peer_port }} \
+  --initial-cluster={{ etcd_initial_cluster }} \
+  --initial-cluster-state=new \
+  --initial-cluster-token=etcd-cluster-0 \
+  --cert-file={{ etcd_cert_dir }}/server.crt \
+  --key-file={{ etcd_cert_dir }}/server.key \
+  --peer-cert-file={{ etcd_cert_dir }}/peer.crt \
+  --peer-key-file={{ etcd_cert_dir }}/peer.key \
+  --trusted-ca-file={{ etcd_cert_dir }}/ca.crt \
+  --peer-trusted-ca-file={{ etcd_cert_dir }}/ca.crt \
+  --peer-client-cert-auth \
+  --client-cert-auth
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+# K8s Homelab VMs
+{% for vm in vm_definitions %}
+Host {{ vm.name }}
+    HostName {{ network_prefix }}.{{ vm.ip_suffix }}
+    User k8s
+    IdentityFile ~/.ssh/k8slab.key
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+{% endfor %}

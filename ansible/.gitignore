@@ -1,0 +1,9 @@
+# Vault credentials (sensitive)
+.vault-credentials/
+
+# Ansible cache
+fact_cache/
+*.retry
+
+# macOS
+.DS_Store

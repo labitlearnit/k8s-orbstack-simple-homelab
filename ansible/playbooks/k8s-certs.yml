@@ -1,0 +1,28 @@
+---
+# =============================================================================
+# Kubernetes Certificates Playbook
+# =============================================================================
+# Issues and deploys all K8s certificates using Vault PKI.
+# Run this after PKI roles are configured in Vault.
+#
+# Usage:
+#   ansible-playbook playbooks/k8s-certs.yml
+#
+# Prerequisites:
+#   - Vault PKI roles configured (run vault-full-setup.yml first)
+#   - community.hashi_vault collection installed
+# =============================================================================
+
+- name: Deploy Kubernetes certificates
+  hosts: k8s_masters:etcd_servers:k8s_workers
+  gather_facts: true
+
+  pre_tasks:
+    - name: Read Vault token from credentials file
+      ansible.builtin.set_fact:
+        vault_token: "{{ lookup('file', playbook_dir + '/../.vault-credentials/vault-init.json') | from_json | json_query('root_token') }}"
+      delegate_to: localhost
+      run_once: true
+
+  roles:
+    - role: ../roles/k8s-certs

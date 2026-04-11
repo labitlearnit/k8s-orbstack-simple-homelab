@@ -1,0 +1,29 @@
+---
+# =============================================================================
+# Vault PKI Setup Playbook
+# =============================================================================
+# Sets up the complete PKI hierarchy in Vault for Kubernetes.
+#
+# Usage:
+#   export VAULT_TOKEN="hvs.xxxxx"
+#   ansible-playbook playbooks/vault-pki.yml
+#
+# This creates:
+#   - Root CA (10 years, pathlen:2)
+#   - Intermediate CA (5 years, pathlen:1)
+#   - Kubernetes CA (90 days, pathlen:0)
+#   - etcd CA (90 days, pathlen:0)
+#   - Front Proxy CA (90 days, pathlen:0)
+#   - PKI roles for issuing leaf certificates
+#
+# Prerequisites:
+#   - Vault must be initialized and unsealed
+#   - VAULT_TOKEN environment variable set
+#   - community.hashi_vault Ansible collection installed
+# =============================================================================
+
+- name: Setup Vault PKI for Kubernetes
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: ../roles/vault-pki

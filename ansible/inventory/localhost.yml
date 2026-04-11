@@ -1,0 +1,23 @@
+---
+# Localhost inventory for running k8s-orbstack-simple-homelab.yml from Mac host
+# Mac only connects to localhost (local) and jump (bastion).
+# All other VMs are managed FROM the jump server using homelab.yml inventory.
+#
+# Usage:
+#   ansible-playbook -i inventory/localhost.yml playbooks/k8s-orbstack-simple-homelab.yml --ask-become-pass
+
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+  children:
+    jump_servers:
+      hosts:
+        jump:
+          ansible_host: "{{ hostvars['localhost']['jump_ip'] | default('jump') }}"
+          ansible_user: k8s
+          ansible_ssh_private_key_file: ~/.ssh/k8slab.key
+          ansible_python_interpreter: /usr/bin/python3
+          ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"

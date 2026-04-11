@@ -1,0 +1,5 @@
+---
+# Mac Setup Role - Variables
+
+mac_ssh_config_marker: "# K8s OrbStack Simple Homelab"
+ssh_key_private: "{{ ansible_env.HOME }}/.ssh/k8slab.key"

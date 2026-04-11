@@ -1,0 +1,231 @@
+---
+# =============================================================================
+# Control Plane Certificates - Direct Issuance
+# =============================================================================
+# Issues control plane certs, deploys directly to master nodes.
+# Some certs are shared (same on both masters), others are per-node.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Shared Control Plane Certificates (same on all masters)
+# -----------------------------------------------------------------------------
+
+# kube-apiserver certificate
+- name: Issue kube-apiserver certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/kube-apiserver"
+    data:
+      common_name: "kube-apiserver"
+      alt_names: "kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster.local,master-1"
+      ip_sans: "{{ master_ips['master-1'] }},{{ service_cidr_first_ip }},127.0.0.1"
+      ttl: "{{ cert_ttl }}"
+  register: apiserver_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy kube-apiserver certificate
+  ansible.builtin.copy:
+    content: "{{ apiserver_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/apiserver.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kube-apiserver key
+  ansible.builtin.copy:
+    content: "{{ apiserver_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/apiserver.key"
+    mode: '0600'
+  become: true
+
+# kube-apiserver-kubelet-client certificate
+- name: Issue kube-apiserver-kubelet-client certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/kube-apiserver-kubelet-client"
+    data:
+      common_name: "kube-apiserver-kubelet-client"
+      ttl: "{{ cert_ttl }}"
+  register: apiserver_kubelet_client_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy kube-apiserver-kubelet-client certificate
+  ansible.builtin.copy:
+    content: "{{ apiserver_kubelet_client_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/apiserver-kubelet-client.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kube-apiserver-kubelet-client key
+  ansible.builtin.copy:
+    content: "{{ apiserver_kubelet_client_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/apiserver-kubelet-client.key"
+    mode: '0600'
+  become: true
+
+# kube-apiserver-etcd-client certificate
+- name: Issue kube-apiserver-etcd-client certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/issue/etcd-client"
+    data:
+      common_name: "kube-apiserver-etcd-client"
+      ttl: "{{ cert_ttl }}"
+  register: apiserver_etcd_client_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy kube-apiserver-etcd-client certificate
+  ansible.builtin.copy:
+    content: "{{ apiserver_etcd_client_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/apiserver-etcd-client.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kube-apiserver-etcd-client key
+  ansible.builtin.copy:
+    content: "{{ apiserver_etcd_client_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/apiserver-etcd-client.key"
+    mode: '0600'
+  become: true
+
+# front-proxy-client certificate
+- name: Issue front-proxy-client certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_front_proxy_path }}/issue/front-proxy-client"
+    data:
+      common_name: "front-proxy-client"
+      ttl: "{{ cert_ttl }}"
+  register: front_proxy_client_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy front-proxy-client certificate
+  ansible.builtin.copy:
+    content: "{{ front_proxy_client_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/front-proxy-client.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy front-proxy-client key
+  ansible.builtin.copy:
+    content: "{{ front_proxy_client_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/front-proxy-client.key"
+    mode: '0600'
+  become: true
+
+# kube-controller-manager certificate
+- name: Issue kube-controller-manager certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/kube-controller-manager"
+    data:
+      common_name: "system:kube-controller-manager"
+      ttl: "{{ cert_ttl }}"
+  register: controller_manager_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy kube-controller-manager certificate
+  ansible.builtin.copy:
+    content: "{{ controller_manager_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/controller-manager.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kube-controller-manager key
+  ansible.builtin.copy:
+    content: "{{ controller_manager_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/controller-manager.key"
+    mode: '0600'
+  become: true
+
+# kube-scheduler certificate
+- name: Issue kube-scheduler certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/kube-scheduler"
+    data:
+      common_name: "system:kube-scheduler"
+      ttl: "{{ cert_ttl }}"
+  register: scheduler_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy kube-scheduler certificate
+  ansible.builtin.copy:
+    content: "{{ scheduler_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/scheduler.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy kube-scheduler key
+  ansible.builtin.copy:
+    content: "{{ scheduler_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/scheduler.key"
+    mode: '0600'
+  become: true
+
+# Service Account key pair
+- name: Issue service account certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/service-account"
+    data:
+      common_name: "service-accounts"
+      ttl: "{{ cert_ttl }}"
+  register: sa_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy service account public key
+  ansible.builtin.copy:
+    content: "{{ sa_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/sa.pub"
+    mode: '0644'
+  become: true
+
+- name: Deploy service account private key
+  ansible.builtin.copy:
+    content: "{{ sa_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/sa.key"
+    mode: '0600'
+  become: true
+
+# Admin certificate (for kubectl)
+- name: Issue admin certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/issue/admin"
+    data:
+      common_name: "kubernetes-admin"
+      ttl: "{{ cert_ttl }}"
+  register: admin_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy admin certificate
+  ansible.builtin.copy:
+    content: "{{ admin_cert.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/admin.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy admin key
+  ansible.builtin.copy:
+    content: "{{ admin_cert.data.data.private_key }}"
+    dest: "{{ k8s_cert_dir }}/admin.key"
+    mode: '0600'
+  become: true
+
+# NOTE: kube-proxy cert moved to kubelet_certs.yml (runs on masters + workers)

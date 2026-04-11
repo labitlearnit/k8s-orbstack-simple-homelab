@@ -1,0 +1,105 @@
+---
+# =============================================================================
+# Jump Server Setup Role
+# =============================================================================
+# Configures the jump/bastion server after VM creation:
+#   1. Fix home directory ownership
+#   2. Copy SSH private key
+#   3. Create SSH config for all VMs
+#   4. Copy project files (ansible directory)
+#   5. Setup Vault environment in .bashrc
+# =============================================================================
+
+- name: Fix home directory ownership
+  ansible.builtin.file:
+    path: /home/k8s
+    owner: k8s
+    group: k8s
+    recurse: true
+  become: true
+
+- name: Ensure .ssh directory exists
+  ansible.builtin.file:
+    path: ~/.ssh
+    state: directory
+    mode: '0700'
+
+- name: Copy SSH private key to jump
+  ansible.builtin.copy:
+    src: "{{ ssh_key_private_src }}"
+    dest: "{{ ssh_key_private_dest }}"
+    mode: '0600'
+
+- name: Create SSH config for all VMs
+  ansible.builtin.template:
+    src: jump-ssh-config.j2
+    dest: ~/.ssh/config
+    mode: '0600'
+
+- name: Create project directory
+  ansible.builtin.file:
+    path: "{{ project_dir_jump }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy ansible directory to jump
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../"
+    dest: "{{ project_dir_jump }}/ansible/"
+    mode: preserve
+  tags: copy-ansible
+
+- name: Setup Vault environment in .bashrc
+  ansible.builtin.blockinfile:
+    path: ~/.bashrc
+    marker: "# {mark} VAULT ENVIRONMENT"
+    block: |
+      # Vault environment
+      export VAULT_ADDR="http://vault:8200"
+
+      # Load token from Ansible credentials
+      export VAULT_TOKEN=$(jq -r .root_token ~/k8s-orbstack-simple-homelab/ansible/.vault-credentials/vault-init.json 2>/dev/null)
+
+      # Unseal vault after vault server reboot (uses first 3 keys)
+      vault-unseal() {
+          echo "Unsealing Vault..."
+          local creds="$HOME/k8s-orbstack-simple-homelab/ansible/.vault-credentials/vault-init.json"
+          if [[ ! -f "$creds" ]]; then
+              echo "Error: $creds not found"
+              return 1
+          fi
+          for key in $(jq -r '.keys[:3][]' "$creds"); do
+              vault operator unseal "$key"
+          done
+          echo "Done. Check: vault status"
+      }
+    create: true
+    mode: '0644'
+
+- name: Create .profile to source .bashrc
+  ansible.builtin.copy:
+    content: |
+      # ~/.profile: executed by login shells
+      if [ -n "$BASH_VERSION" ]; then
+          if [ -f "$HOME/.bashrc" ]; then
+              . "$HOME/.bashrc"
+          fi
+      fi
+    dest: ~/.profile
+    mode: '0644'
+    force: false
+
+- name: Test connectivity to all VMs from jump
+  ansible.builtin.command:
+    cmd: "ssh -o ConnectTimeout=5 -o BatchMode=yes {{ item.name }} echo ok"
+  loop: "{{ vm_definitions }}"
+  register: connectivity_results
+  failed_when: false
+  changed_when: false
+
+- name: Display connectivity results
+  ansible.builtin.debug:
+    msg: "{{ item.item.name }}: {{ 'OK' if item.rc == 0 else 'FAILED' }}"
+  loop: "{{ connectivity_results.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

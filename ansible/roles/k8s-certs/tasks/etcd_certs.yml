@@ -1,0 +1,92 @@
+---
+# =============================================================================
+# etcd Certificates - Direct Issuance
+# =============================================================================
+# Issues etcd server and peer certs, deploys directly to etcd nodes.
+# =============================================================================
+
+- name: Get etcd node IP
+  ansible.builtin.set_fact:
+    etcd_node_ip: "{{ etcd_ips[inventory_hostname] }}"
+
+# etcd Server Certificate
+- name: Issue etcd server certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/issue/etcd-server"
+    data:
+      common_name: "{{ inventory_hostname }}"
+      alt_names: "localhost,{{ inventory_hostname }}"
+      ip_sans: "{{ etcd_node_ip }},127.0.0.1"
+      ttl: "{{ cert_ttl }}"
+  register: etcd_server_cert
+  delegate_to: localhost
+
+- name: Deploy etcd server certificate
+  ansible.builtin.copy:
+    content: "{{ etcd_server_cert.data.data.certificate }}"
+    dest: "{{ etcd_cert_dir }}/server.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy etcd server key
+  ansible.builtin.copy:
+    content: "{{ etcd_server_cert.data.data.private_key }}"
+    dest: "{{ etcd_cert_dir }}/server.key"
+    mode: '0600'
+  become: true
+
+# etcd Peer Certificate
+- name: Issue etcd peer certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/issue/etcd-peer"
+    data:
+      common_name: "{{ inventory_hostname }}"
+      alt_names: "localhost,{{ inventory_hostname }}"
+      ip_sans: "{{ etcd_node_ip }},127.0.0.1"
+      ttl: "{{ cert_ttl }}"
+  register: etcd_peer_cert
+  delegate_to: localhost
+
+- name: Deploy etcd peer certificate
+  ansible.builtin.copy:
+    content: "{{ etcd_peer_cert.data.data.certificate }}"
+    dest: "{{ etcd_cert_dir }}/peer.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy etcd peer key
+  ansible.builtin.copy:
+    content: "{{ etcd_peer_cert.data.data.private_key }}"
+    dest: "{{ etcd_cert_dir }}/peer.key"
+    mode: '0600'
+  become: true
+
+# etcd Healthcheck Client Certificate (one per node)
+- name: Issue etcd healthcheck client certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/issue/etcd-healthcheck"
+    data:
+      common_name: "etcd-healthcheck-client"
+      ttl: "{{ cert_ttl }}"
+  register: etcd_healthcheck_cert
+  delegate_to: localhost
+
+- name: Deploy etcd healthcheck client certificate
+  ansible.builtin.copy:
+    content: "{{ etcd_healthcheck_cert.data.data.certificate }}"
+    dest: "{{ etcd_cert_dir }}/healthcheck-client.crt"
+    mode: '0644'
+  become: true
+
+- name: Deploy etcd healthcheck client key
+  ansible.builtin.copy:
+    content: "{{ etcd_healthcheck_cert.data.data.private_key }}"
+    dest: "{{ etcd_cert_dir }}/healthcheck-client.key"
+    mode: '0600'
+  become: true

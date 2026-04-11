@@ -1,0 +1,68 @@
+---
+# =============================================================================
+# Deploy CA Certificates
+# =============================================================================
+# Fetches CA certs from Vault PKI and deploys to nodes.
+# =============================================================================
+
+# Kubernetes CA (masters and workers)
+- name: Get Kubernetes CA certificate
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/cert/ca"
+  register: kubernetes_ca
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy Kubernetes CA certificate
+  ansible.builtin.copy:
+    content: "{{ kubernetes_ca.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/ca.crt"
+    mode: '0644'
+  become: true
+  when: "'k8s_masters' in group_names or 'k8s_workers' in group_names"
+
+# etcd CA (etcd nodes and masters - masters need it for apiserver-etcd-client)
+- name: Get etcd CA certificate
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/cert/ca"
+  register: etcd_ca
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy etcd CA certificate to etcd nodes
+  ansible.builtin.copy:
+    content: "{{ etcd_ca.data.data.certificate }}"
+    dest: "{{ etcd_cert_dir }}/ca.crt"
+    mode: '0644'
+  become: true
+  when: "'etcd_servers' in group_names"
+
+- name: Deploy etcd CA certificate to masters
+  ansible.builtin.copy:
+    content: "{{ etcd_ca.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/etcd/ca.crt"
+    mode: '0644'
+  become: true
+  when: "'k8s_masters' in group_names"
+
+# Front Proxy CA (masters only)
+- name: Get Front Proxy CA certificate
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_front_proxy_path }}/cert/ca"
+  register: front_proxy_ca
+  delegate_to: localhost
+  run_once: true
+
+- name: Deploy Front Proxy CA certificate
+  ansible.builtin.copy:
+    content: "{{ front_proxy_ca.data.data.certificate }}"
+    dest: "{{ k8s_cert_dir }}/front-proxy-ca.crt"
+    mode: '0644'
+  become: true
+  when: "'k8s_masters' in group_names"

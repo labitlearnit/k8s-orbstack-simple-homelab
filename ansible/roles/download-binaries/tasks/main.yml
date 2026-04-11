@@ -1,0 +1,33 @@
+---
+# =============================================================================
+# Download K8s Binaries Role
+# =============================================================================
+# Downloads all required binaries to the Mac in parallel using background curl.
+# Same approach as the bash script — fire all downloads with & and wait.
+# =============================================================================
+
+- name: Create local binary cache directory
+  ansible.builtin.file:
+    path: "{{ bin_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Download all binaries in parallel
+  ansible.builtin.script:
+    cmd: download_binaries.sh
+    chdir: "{{ bin_dir }}"
+  environment:
+    BIN_DIR: "{{ bin_dir }}"
+    K8S_DOWNLOAD_URL: "{{ k8s_download_url }}"
+    ETCD_DOWNLOAD_URL: "{{ etcd_download_url }}"
+    CONTAINERD_DOWNLOAD_URL: "{{ containerd_download_url }}"
+    RUNC_DOWNLOAD_URL: "{{ runc_download_url }}"
+    CALICO_MANIFEST_URL: "{{ calico_manifest_url }}"
+    ETCD_VERSION: "{{ etcd_version }}"
+    CONTAINERD_VERSION: "{{ containerd_version }}"
+  register: download_result
+  changed_when: "'0 started' not in download_result.stdout"
+
+- name: Display download result
+  ansible.builtin.debug:
+    msg: "{{ download_result.stdout_lines[-1] }}"

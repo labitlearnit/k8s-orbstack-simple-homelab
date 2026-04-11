@@ -1,0 +1,63 @@
+---
+# =============================================================================
+# Mac Host Setup Role
+# =============================================================================
+# Configures the Mac host for SSH access:
+#   1. Update /etc/hosts (jump only)
+#   2. Setup SSH config for jump (bastion) + ProxyJump for other VMs
+# =============================================================================
+
+- name: Check if K8s OrbStack Simple Homelab entries exist in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: "K8s OrbStack Simple Homelab"
+    state: absent
+  check_mode: true
+  register: hosts_check
+  changed_when: false
+  become: true
+
+- name: Add jump server entry to /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "{{ mac_ssh_config_marker }} {mark}"
+    block: |
+      {{ jump_ip }}  jump
+  become: true
+  when: not hosts_check.found
+
+- name: Check if SSH config has K8s OrbStack Simple Homelab entry
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.ssh/config"
+    regexp: "{{ mac_ssh_config_marker }}"
+    state: absent
+  check_mode: true
+  register: ssh_config_check
+  changed_when: false
+  failed_when: false
+
+- name: Add SSH config for jump (direct) and other VMs (via jump bastion)
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.ssh/config"
+    marker: "{{ mac_ssh_config_marker }} {mark}"
+    block: |
+      Host jump
+          HostName {{ jump_ip }}
+          User k8s
+          IdentityFile {{ ssh_key_private }}
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          LogLevel ERROR
+          GSSAPIAuthentication no
+          PreferredAuthentications publickey
+
+      Host vault etcd-1 master-1 worker-1 worker-2
+          User k8s
+          IdentityFile {{ ssh_key_private }}
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          LogLevel ERROR
+          ProxyJump jump
+    create: true
+    mode: '0600'
+  when: not (ssh_config_check.found | default(false))

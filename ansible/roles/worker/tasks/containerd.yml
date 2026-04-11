@@ -1,0 +1,183 @@
+---
+# Install and configure containerd as the container runtime
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - socat
+      - conntrack
+      - iptables
+    state: present
+    update_cache: true
+  become: true
+
+- name: Load required kernel modules
+  ansible.builtin.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+  become: true
+
+- name: Persist kernel modules
+  ansible.builtin.copy:
+    content: |
+      overlay
+      br_netfilter
+    dest: /etc/modules-load.d/containerd.conf
+    mode: '0644'
+  become: true
+
+- name: Set required sysctl parameters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+    reload: true
+  loop:
+    - { key: net.bridge.bridge-nf-call-iptables, value: "1" }
+    - { key: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+    - { key: net.ipv4.ip_forward, value: "1" }
+  become: true
+
+- name: Check if containerd binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/containerd
+  register: containerd_binary
+
+- name: Check for pre-cached containerd tarball
+  ansible.builtin.stat:
+    path: "/tmp/containerd-cache/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+  register: containerd_precached
+  delegate_to: localhost
+  run_once: true
+
+- name: Check for pre-cached runc binary
+  ansible.builtin.stat:
+    path: "/tmp/containerd-cache/runc.arm64"
+  register: runc_precached
+  delegate_to: localhost
+  run_once: true
+
+- name: Copy pre-cached containerd tarball to jump /tmp
+  ansible.builtin.copy:
+    src: "/tmp/containerd-cache/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    dest: "/tmp/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    mode: '0644'
+    remote_src: true
+  delegate_to: localhost
+  run_once: true
+  when:
+    - not containerd_binary.stat.exists
+    - containerd_precached.stat.exists
+
+- name: Download containerd tarball to jump (not pre-cached)
+  ansible.builtin.get_url:
+    url: "https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    dest: "/tmp/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    mode: '0644'
+    timeout: 300
+  delegate_to: localhost
+  run_once: true
+  when:
+    - not containerd_binary.stat.exists
+    - not containerd_precached.stat.exists
+
+- name: Copy containerd tarball to node
+  ansible.builtin.copy:
+    src: "/tmp/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    dest: "/tmp/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    mode: '0644'
+  when: not containerd_binary.stat.exists
+  become: true
+
+- name: Extract containerd tarball
+  ansible.builtin.unarchive:
+    src: "/tmp/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    dest: /usr/local
+    remote_src: true
+  when: not containerd_binary.stat.exists
+  become: true
+
+- name: Copy pre-cached runc binary to jump /tmp
+  ansible.builtin.copy:
+    src: "/tmp/containerd-cache/runc.arm64"
+    dest: "/tmp/runc.arm64"
+    mode: '0755'
+    remote_src: true
+  delegate_to: localhost
+  run_once: true
+  when:
+    - not containerd_binary.stat.exists
+    - runc_precached.stat.exists
+
+- name: Download runc binary to jump (not pre-cached)
+  ansible.builtin.get_url:
+    url: "https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.arm64"
+    dest: "/tmp/runc.arm64"
+    mode: '0755'
+    timeout: 300
+  delegate_to: localhost
+  run_once: true
+  when:
+    - not containerd_binary.stat.exists
+    - not runc_precached.stat.exists
+
+- name: Install runc
+  ansible.builtin.copy:
+    src: "/tmp/runc.arm64"
+    dest: /usr/local/sbin/runc
+    mode: '0755'
+  when: not containerd_binary.stat.exists
+  become: true
+
+- name: Create containerd config directory
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Generate default containerd config
+  ansible.builtin.shell:
+    cmd: containerd config default > /etc/containerd/config.toml
+  become: true
+  changed_when: true
+
+- name: Enable SystemdCgroup in containerd config
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+  become: true
+
+- name: Create containerd systemd service
+  ansible.builtin.template:
+    src: containerd.service.j2
+    dest: /etc/systemd/system/containerd.service
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart containerd
+  become: true
+
+- name: Enable and start containerd
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Clean up downloaded files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    - "/tmp/runc.arm64"
+  become: true

@@ -1,0 +1,19 @@
+---
+# Test connectivity to all VMs
+# Usage: ansible-playbook playbooks/ping.yml
+
+- name: Test connectivity to all hosts
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping all hosts
+      ping:
+      
+    - name: Get hostname
+      command: hostname
+      register: hostname_result
+      changed_when: false
+      
+    - name: Display hostname
+      debug:
+        msg: "{{ inventory_hostname }} reports hostname: {{ hostname_result.stdout }}"

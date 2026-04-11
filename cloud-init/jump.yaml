@@ -1,0 +1,100 @@
+#cloud-config
+hostname: jump
+manage_etc_hosts: false
+
+users:
+  - default
+  - name: k8s
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - openssh-server
+  - git
+  - python3-pip
+  - python3-venv
+  - unzip
+  - curl
+  - wget
+  - jq
+  - sshpass
+  - gnupg
+  - software-properties-common
+  - tree
+  - htop
+  - net-tools
+  - dnsutils
+
+write_files:
+  - path: /etc/hosts
+    content: |
+      127.0.0.1 localhost
+      127.0.1.1 jump
+
+      # K8s Simple Homelab VMs
+      __NETWORK_PREFIX__.11  vault
+      __NETWORK_PREFIX__.12  jump
+      __NETWORK_PREFIX__.21  etcd-1
+      __NETWORK_PREFIX__.31  master-1
+      __NETWORK_PREFIX__.41  worker-1
+      __NETWORK_PREFIX__.42  worker-2
+
+      # IPv6
+      ::1 ip6-localhost ip6-loopback
+      fe00::0 ip6-localnet
+      ff00::0 ip6-mcastprefix
+      ff02::1 ip6-allnodes
+      ff02::2 ip6-allrouters
+
+  - path: /etc/profile.d/vault.sh
+    content: |
+      export VAULT_ADDR="http://vault:8200"
+    permissions: '0755'
+
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - systemctl disable systemd-networkd-wait-online.service || true
+  - systemctl mask systemd-networkd-wait-online.service || true
+  - mkdir -p /home/k8s/.ssh && chown k8s:k8s /home/k8s/.ssh && chmod 700 /home/k8s/.ssh
+
+  # Install Ansible
+  - apt-add-repository --yes --update ppa:ansible/ansible
+  - apt-get install -y ansible
+
+  # Install HashiCorp tools (Vault CLI + Terraform)
+  - wget -qO- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  - echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com noble main" > /etc/apt/sources.list.d/hashicorp.list
+  - apt-get update
+  - apt-get install -y terraform vault
+
+  # Install kubectl
+  - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
+  - apt-get update
+  - apt-get install -y kubectl
+
+  # Install Helm
+  - curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+  # Configure static IP
+  - ip addr add __NETWORK_PREFIX__.12/24 dev eth0 || true
+  - |
+    cat > /etc/netplan/90-static.yaml << 'EOF'
+    network:
+      version: 2
+      ethernets:
+        eth0:
+          addresses:
+            - __NETWORK_PREFIX__.12/24
+    EOF
+  - chmod 600 /etc/netplan/90-static.yaml
+  - netplan apply || true
+
+final_message: "jump box ready after $UPTIME seconds"

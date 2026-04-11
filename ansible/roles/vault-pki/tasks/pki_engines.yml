@@ -1,0 +1,113 @@
+---
+# =============================================================================
+# Enable PKI Secret Engines
+# =============================================================================
+
+- name: Enable Root PKI engine
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_root_path }}"
+    data:
+      type: pki
+      config:
+        max_lease_ttl: "{{ root_ca_ttl }}"
+  register: root_pki_result
+  failed_when: false
+
+- name: Tune Root PKI engine max TTL
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_root_path }}/tune"
+    data:
+      max_lease_ttl: "{{ root_ca_ttl }}"
+  when: root_pki_result.data is not defined or 'already in use' in (root_pki_result.msg | default(''))
+
+- name: Enable Intermediate PKI engine
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_int_path }}"
+    data:
+      type: pki
+      config:
+        max_lease_ttl: "{{ intermediate_ca_ttl }}"
+  register: int_pki_result
+  failed_when: false
+
+- name: Tune Intermediate PKI engine max TTL
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_int_path }}/tune"
+    data:
+      max_lease_ttl: "{{ intermediate_ca_ttl }}"
+  when: int_pki_result.data is not defined or 'already in use' in (int_pki_result.msg | default(''))
+
+- name: Enable Kubernetes PKI engine
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_kubernetes_path }}"
+    data:
+      type: pki
+      config:
+        max_lease_ttl: "{{ sub_ca_ttl }}"
+  register: k8s_pki_result
+  failed_when: false
+
+- name: Tune Kubernetes PKI engine max TTL
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_kubernetes_path }}/tune"
+    data:
+      max_lease_ttl: "{{ sub_ca_ttl }}"
+  when: k8s_pki_result.data is not defined or 'already in use' in (k8s_pki_result.msg | default(''))
+
+- name: Enable etcd PKI engine
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_etcd_path }}"
+    data:
+      type: pki
+      config:
+        max_lease_ttl: "{{ sub_ca_ttl }}"
+  register: etcd_pki_result
+  failed_when: false
+
+- name: Tune etcd PKI engine max TTL
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_etcd_path }}/tune"
+    data:
+      max_lease_ttl: "{{ sub_ca_ttl }}"
+  when: etcd_pki_result.data is not defined or 'already in use' in (etcd_pki_result.msg | default(''))
+
+- name: Enable Front Proxy PKI engine
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_front_proxy_path }}"
+    data:
+      type: pki
+      config:
+        max_lease_ttl: "{{ sub_ca_ttl }}"
+  register: fp_pki_result
+  failed_when: false
+
+- name: Tune Front Proxy PKI engine max TTL
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "sys/mounts/{{ pki_front_proxy_path }}/tune"
+    data:
+      max_lease_ttl: "{{ sub_ca_ttl }}"
+  when: fp_pki_result.data is not defined or 'already in use' in (fp_pki_result.msg | default(''))
+
+- name: PKI engines enabled
+  ansible.builtin.debug:
+    msg: "PKI engines enabled: {{ pki_root_path }}, {{ pki_int_path }}, {{ pki_kubernetes_path }}, {{ pki_etcd_path }}, {{ pki_front_proxy_path }}"

@@ -1,0 +1,28 @@
+---
+# Vault connection settings
+vault_addr: "http://vault:8200"
+vault_token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+
+# Certificate TTL (30 days)
+cert_ttl: "720h"
+
+# PKI paths
+pki_kubernetes_path: "pki_kubernetes"
+pki_etcd_path: "pki_etcd"
+pki_front_proxy_path: "pki_front_proxy"
+
+# Certificate directories on nodes
+k8s_cert_dir: "/etc/kubernetes/pki"
+etcd_cert_dir: "/etc/etcd/pki"
+
+# Cluster settings
+service_cidr_first_ip: "10.96.0.1"
+
+# Node IPs (no haproxy — single master, direct access)
+master_ips:
+  master-1: "{{ network_prefix }}.31"
+worker_ips:
+  worker-1: "{{ network_prefix }}.41"
+  worker-2: "{{ network_prefix }}.42"
+etcd_ips:
+  etcd-1: "{{ network_prefix }}.21"

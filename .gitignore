@@ -1,0 +1,12 @@
+# Generated files
+k8s-binaries/
+
+# Vault credentials
+.vault-credentials/
+
+# Ansible cache
+ansible/fact_cache/
+*.retry
+
+# macOS
+.DS_Store

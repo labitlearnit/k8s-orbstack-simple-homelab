@@ -1,0 +1,95 @@
+---
+# VM Provisioning Role - Main Tasks
+# Detects OrbStack subnet, renders cloud-init templates, creates VMs
+
+- name: Detect OrbStack network subnet
+  ansible.builtin.command:
+    cmd: orb config show
+  register: orb_config
+  changed_when: false
+
+- name: Parse network prefix from OrbStack subnet
+  ansible.builtin.set_fact:
+    orbstack_subnet: "{{ orb_config.stdout_lines | select('match', 'network.subnet4') | first | split() | last }}"
+
+- name: Calculate static IP network prefix (upper /24 of /23 subnet)
+  ansible.builtin.set_fact:
+    network_prefix: "{{ orbstack_subnet.split('.')[0] }}.{{ orbstack_subnet.split('.')[1] }}.{{ orbstack_subnet.split('.')[2] | int + 1 }}"
+
+- name: Display detected network
+  ansible.builtin.debug:
+    msg: "OrbStack subnet: {{ orbstack_subnet }} → Static IP prefix: {{ network_prefix }}.x"
+
+- name: Read SSH public key
+  ansible.builtin.slurp:
+    src: "{{ ssh_key_public }}"
+  register: ssh_pub_key_raw
+
+- name: Set SSH public key fact
+  ansible.builtin.set_fact:
+    ssh_public_key: "{{ ssh_pub_key_raw.content | b64decode | trim }}"
+
+- name: Create temp directory for rendered cloud-init
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: orbstack-cloud-init-
+  register: temp_cloud_init_dir
+
+- name: Render each VM cloud-init file
+  ansible.builtin.shell: |
+    sed -e 's|__SSH_PUBLIC_KEY__|{{ ssh_public_key }}|g' \
+        -e 's|__NETWORK_PREFIX__|{{ network_prefix }}|g' \
+        "{{ cloud_init_dir }}/{{ item.name }}.yaml" \
+        > "{{ temp_cloud_init_dir.path }}/{{ item.name }}.yaml"
+  loop: "{{ vm_definitions }}"
+  changed_when: true
+
+- name: Check existing OrbStack VMs
+  ansible.builtin.command:
+    cmd: orb list
+  register: orb_list
+  changed_when: false
+
+- name: Create OrbStack VMs (async)
+  ansible.builtin.command:
+    cmd: >
+      orb create -u k8s
+      -c {{ temp_cloud_init_dir.path }}/{{ item.name }}.yaml
+      ubuntu:noble {{ item.name }}
+  loop: "{{ vm_definitions }}"
+  when: "item.name not in orb_list.stdout"
+  async: 300
+  poll: 0
+  register: vm_async_jobs
+
+- name: Wait for all VM creation to complete
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ vm_async_jobs.results }}"
+  when: item.ansible_job_id is defined
+  register: vm_creation
+  until: vm_creation.finished
+  retries: 60
+  delay: 5
+
+- name: Wait for VMs to be accessible via orb
+  ansible.builtin.command:
+    cmd: orb run -m {{ item.name }} -u k8s bash -c 'true'
+  loop: "{{ vm_definitions }}"
+  register: vm_ready
+  retries: 30
+  delay: 2
+  until: vm_ready.rc == 0
+  changed_when: false
+
+- name: Export network_prefix for downstream plays
+  ansible.builtin.set_fact:
+    network_prefix: "{{ network_prefix }}"
+    jump_ip: "{{ network_prefix }}.12"
+    vault_ip: "{{ network_prefix }}.11"
+    cacheable: true
+
+- name: Clean up temp directory
+  ansible.builtin.file:
+    path: "{{ temp_cloud_init_dir.path }}"
+    state: absent

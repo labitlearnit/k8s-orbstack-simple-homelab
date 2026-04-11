@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# Generate and Sign Intermediate CA
+# =============================================================================
+
+- name: Check if Intermediate CA already exists
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_int_path }}/cert/ca"
+  register: int_ca_check
+  failed_when: false
+
+- name: Generate Intermediate CA CSR
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_int_path }}/intermediate/generate/internal"
+    data:
+      common_name: "{{ intermediate_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      key_type: "rsa"
+      key_bits: 4096
+  register: int_csr
+  when: int_ca_check.data is not defined
+
+- name: Sign Intermediate CA with Root CA
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_root_path }}/root/sign-intermediate"
+    data:
+      csr: "{{ int_csr.data.data.csr }}"
+      common_name: "{{ intermediate_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      ttl: "{{ intermediate_ca_ttl }}"
+      max_path_length: "{{ intermediate_ca_pathlen }}"
+      use_csr_values: true
+  register: int_signed
+  when: int_ca_check.data is not defined
+
+- name: Set Intermediate CA signed certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_int_path }}/intermediate/set-signed"
+    data:
+      certificate: "{{ int_signed.data.data.certificate }}"
+  when: int_ca_check.data is not defined
+
+- name: Intermediate CA status
+  ansible.builtin.debug:
+    msg: "Intermediate CA: {{ 'Generated and signed' if int_ca_check.data is not defined else 'Already exists' }}"

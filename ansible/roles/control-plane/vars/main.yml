@@ -1,0 +1,39 @@
+---
+# Kubernetes version
+k8s_version: "1.32.0"
+
+# Binary download URL
+k8s_download_url: "https://dl.k8s.io/release/v{{ k8s_version }}/bin/linux/arm64"
+
+# Certificate directories
+k8s_cert_dir: "/etc/kubernetes/pki"
+etcd_cert_dir: "/etc/etcd/pki"
+
+# Kubernetes directories
+k8s_config_dir: "/etc/kubernetes"
+k8s_manifests_dir: "/etc/kubernetes/manifests"
+
+# etcd endpoints (single node)
+etcd_endpoints: "https://etcd-1:2379"
+
+# Service CIDR and Pod CIDR
+service_cidr: "10.96.0.0/12"
+pod_cidr: "10.244.0.0/16"
+
+# Cluster DNS
+cluster_dns: "10.96.0.10"
+
+# API Server settings
+apiserver_port: 6443
+apiserver_count: 1
+
+# Ports
+controller_manager_port: 10257
+scheduler_port: 10259
+
+# API server address (single master, no load balancer)
+haproxy_ip: "{{ network_prefix }}.31"
+
+# Vault connection (for fetching etcd encryption key)
+vault_addr: "http://vault:8200"
+vault_token: "{{ lookup('env', 'VAULT_TOKEN') | default(lookup('file', playbook_dir + '/../.vault-credentials/vault-init.json') | from_json | json_query('root_token'), true) }}"

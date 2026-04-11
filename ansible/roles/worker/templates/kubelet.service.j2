@@ -1,0 +1,20 @@
+[Unit]
+Description=Kubernetes Kubelet
+Documentation=https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/
+After=containerd.service
+Requires=containerd.service
+
+[Service]
+ExecStart=/usr/local/bin/kubelet \
+  --config={{ k8s_config_dir }}/kubelet-config.yaml \
+  --kubeconfig={{ k8s_config_dir }}/kubelet.kubeconfig \
+  --hostname-override={{ inventory_hostname }} \
+  --node-ip={{ node_ip }} \
+  --v=2
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

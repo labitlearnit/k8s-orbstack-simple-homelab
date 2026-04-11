@@ -1,0 +1,58 @@
+---
+# K8s OrbStack Simple Homelab - Cluster Inventory
+# Used FROM the jump server to manage all VMs
+# network_prefix is set dynamically by the provisioning script
+
+all:
+  vars:
+    ansible_user: k8s
+    ansible_ssh_private_key_file: ~/.ssh/k8slab.key
+    ansible_python_interpreter: /usr/bin/python3
+    # Default network prefix — overridden dynamically during provisioning
+    network_prefix: "192.168.139"
+
+  children:
+    # Jump/Management Server
+    jump_servers:
+      hosts:
+        jump:
+          static_ip: "{{ network_prefix }}.12"
+
+    # HashiCorp Vault
+    vault_servers:
+      hosts:
+        vault:
+          static_ip: "{{ network_prefix }}.11"
+
+    # etcd (single node)
+    etcd_servers:
+      hosts:
+        etcd-1:
+          static_ip: "{{ network_prefix }}.21"
+
+    # Kubernetes Control Plane (single master)
+    k8s_masters:
+      hosts:
+        master-1:
+          static_ip: "{{ network_prefix }}.31"
+
+    # Kubernetes Workers
+    k8s_workers:
+      hosts:
+        worker-1:
+          static_ip: "{{ network_prefix }}.41"
+        worker-2:
+          static_ip: "{{ network_prefix }}.42"
+
+    # Group: All Kubernetes nodes (etcd + masters + workers)
+    k8s_nodes:
+      children:
+        etcd_servers:
+        k8s_masters:
+        k8s_workers:
+
+    # Group: All infrastructure (non-k8s)
+    infrastructure:
+      children:
+        jump_servers:
+        vault_servers:

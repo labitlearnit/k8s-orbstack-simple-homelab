@@ -1,0 +1,57 @@
+---
+# =============================================================================
+# Copy binaries from Mac to Jump server
+# =============================================================================
+# Run on jump_servers host group
+# =============================================================================
+
+- name: Create cache directories on jump
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ jump_k8s_bin_dir }}"
+    - "{{ jump_etcd_cache_dir }}"
+    - "{{ jump_containerd_cache_dir }}"
+
+- name: Copy K8s binaries to jump
+  ansible.builtin.copy:
+    src: "{{ bin_dir }}/{{ item }}"
+    dest: "{{ jump_k8s_bin_dir }}/{{ item }}"
+    mode: '0755'
+  loop: "{{ k8s_binaries }}"
+
+- name: Copy etcd tarball to jump
+  ansible.builtin.copy:
+    src: "{{ bin_dir }}/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    dest: "{{ jump_etcd_cache_dir }}/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    mode: '0644'
+
+- name: Copy containerd tarball to jump
+  ansible.builtin.copy:
+    src: "{{ bin_dir }}/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    dest: "{{ jump_containerd_cache_dir }}/containerd-{{ containerd_version }}-linux-arm64.tar.gz"
+    mode: '0644'
+
+- name: Copy runc to jump
+  ansible.builtin.copy:
+    src: "{{ bin_dir }}/runc.arm64"
+    dest: "{{ jump_containerd_cache_dir }}/runc.arm64"
+    mode: '0755'
+
+- name: Copy Calico manifest to jump
+  ansible.builtin.copy:
+    src: "{{ bin_dir }}/calico.yaml"
+    dest: /tmp/calico.yaml
+    mode: '0644'
+
+- name: Mark binaries as pre-cached
+  ansible.builtin.file:
+    path: "{{ item }}/.pre-cached"
+    state: touch
+    mode: '0644'
+  loop:
+    - "{{ jump_k8s_bin_dir }}"
+    - "{{ jump_etcd_cache_dir }}"
+    - "{{ jump_containerd_cache_dir }}"

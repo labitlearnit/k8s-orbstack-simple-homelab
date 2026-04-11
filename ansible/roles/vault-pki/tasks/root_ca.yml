@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# Generate Root CA
+# =============================================================================
+
+- name: Check if Root CA already exists
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_root_path }}/cert/ca"
+  register: root_ca_check
+  failed_when: false
+
+- name: Generate Root CA
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_root_path }}/root/generate/internal"
+    data:
+      common_name: "{{ root_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      ttl: "{{ root_ca_ttl }}"
+      key_type: "rsa"
+      key_bits: 4096
+      max_path_length: "{{ root_ca_pathlen }}"
+  register: root_ca_result
+  when: root_ca_check.data is not defined
+
+- name: Root CA status
+  ansible.builtin.debug:
+    msg: "Root CA: {{ 'Generated' if root_ca_check.data is not defined else 'Already exists' }}"

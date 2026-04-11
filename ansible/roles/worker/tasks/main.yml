@@ -1,0 +1,86 @@
+---
+# Worker Node Setup
+
+- name: Set node IP address
+  ansible.builtin.set_fact:
+    node_ip: "{{ static_ip }}"
+
+- name: Create kubernetes directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ k8s_config_dir }}"
+    - /var/lib/kubelet
+    - /var/lib/kube-proxy
+    - /var/log/kubernetes
+  become: true
+
+# Download binaries
+- name: Check if kubelet binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/kubelet
+  register: kubelet_binary
+
+- name: Check for pre-cached binaries on jump
+  ansible.builtin.stat:
+    path: /tmp/k8s-binaries/.pre-cached
+  register: k8s_pre_cached
+  delegate_to: localhost
+  run_once: true
+
+- name: Ensure binary cache directory exists on jump
+  ansible.builtin.file:
+    path: /tmp/k8s-binaries
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  run_once: true
+  when: not kubelet_binary.stat.exists and not k8s_pre_cached.stat.exists
+
+- name: Download worker binaries to jump server (cached)
+  ansible.builtin.get_url:
+    url: "{{ k8s_download_url }}/{{ item }}"
+    dest: "/tmp/k8s-binaries/{{ item }}"
+    mode: '0755'
+    timeout: 300
+  loop:
+    - kubelet
+    - kube-proxy
+    - kubectl
+  delegate_to: localhost
+  run_once: true
+  when: not kubelet_binary.stat.exists and not k8s_pre_cached.stat.exists
+
+- name: Copy worker binaries to nodes
+  ansible.builtin.copy:
+    src: "/tmp/k8s-binaries/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+  loop:
+    - kubelet
+    - kube-proxy
+    - kubectl
+  when: not kubelet_binary.stat.exists
+  become: true
+
+# Install container runtime
+- name: Include containerd tasks
+  ansible.builtin.include_tasks: containerd.yml
+
+# Configure kubelet
+- name: Include kubelet tasks
+  ansible.builtin.include_tasks: kubelet.yml
+
+# Configure kube-proxy
+- name: Include kube-proxy tasks
+  ansible.builtin.include_tasks: kube-proxy.yml
+
+# Wait for kubelet to be ready
+- name: Wait for kubelet to be ready
+  ansible.builtin.wait_for:
+    port: "{{ kubelet_port }}"
+    host: "{{ node_ip }}"
+    delay: 5
+    timeout: 60

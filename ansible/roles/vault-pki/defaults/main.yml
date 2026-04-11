@@ -1,0 +1,58 @@
+---
+# =============================================================================
+# Vault PKI Role - Default Variables
+# =============================================================================
+
+# Vault connection
+vault_addr: "http://vault:8200"
+vault_token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+
+# PKI engine paths
+pki_root_path: "pki_root"
+pki_int_path: "pki_int"
+pki_kubernetes_path: "pki_kubernetes"
+pki_etcd_path: "pki_etcd"
+pki_front_proxy_path: "pki_front_proxy"
+
+# CA TTLs
+root_ca_ttl: "8760h"           # 365 days
+intermediate_ca_ttl: "4320h"   # 180 days
+sub_ca_ttl: "2160h"            # 90 days
+leaf_cert_max_ttl: "720h"      # 30 days
+
+# Key settings
+leaf_cert_key_type: "rsa"
+leaf_cert_key_bits: 4096
+
+# CA Subject fields
+ca_organization: "homelab"
+ca_ou: "homelab"
+ca_country: "India"
+ca_locality: "BLR"
+
+# Root CA
+root_ca_cn: "Homelab Root CA"
+root_ca_pathlen: 2
+
+# Intermediate CA
+intermediate_ca_cn: "Homelab Intermediate CA"
+intermediate_ca_pathlen: 1
+
+# Sub-CAs (pathlen: 0 - cannot sign other CAs)
+kubernetes_ca_cn: "Kubernetes CA"
+etcd_ca_cn: "etcd CA"
+front_proxy_ca_cn: "Front Proxy CA"
+
+# etcd node hostnames (for PKI role allowed_domains)
+etcd_hostnames:
+  - etcd-1
+
+# Kubernetes API server allowed domains
+apiserver_allowed_domains:
+  - kube-apiserver
+  - kubernetes
+  - kubernetes.default
+  - kubernetes.default.svc
+  - kubernetes.default.svc.cluster.local
+  - master-1
+  - localhost

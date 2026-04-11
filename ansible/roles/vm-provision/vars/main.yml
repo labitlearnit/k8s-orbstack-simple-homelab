@@ -1,0 +1,17 @@
+---
+# VM Provisioning Role - Variables
+
+project_dir: "{{ ansible_env.HOME }}/k8s-orbstack-simple-homelab"
+cloud_init_dir: "{{ project_dir }}/cloud-init"
+
+ssh_key_private: "{{ ansible_env.HOME }}/.ssh/k8slab.key"
+ssh_key_public: "{{ ssh_key_private }}.pub"
+
+# VM definitions: name, ip_suffix
+vm_definitions:
+  - { name: "vault",    ip_suffix: 11 }
+  - { name: "jump",     ip_suffix: 12 }
+  - { name: "etcd-1",   ip_suffix: 21 }
+  - { name: "master-1", ip_suffix: 31 }
+  - { name: "worker-1", ip_suffix: 41 }
+  - { name: "worker-2", ip_suffix: 42 }

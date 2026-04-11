@@ -1,0 +1,271 @@
+---
+# =============================================================================
+# PKI Roles for Certificate Issuance
+# =============================================================================
+# Creates roles that define what certificates can be issued from each CA.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Kubernetes PKI Roles
+# -----------------------------------------------------------------------------
+
+# kube-apiserver certificate role
+- name: Create kube-apiserver PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/kube-apiserver"
+    data:
+      allowed_domains: "{{ apiserver_allowed_domains | join(',') }}"
+      allow_localhost: true
+      allow_ip_sans: true
+      allow_bare_domains: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# kube-apiserver-kubelet-client certificate role
+- name: Create kube-apiserver-kubelet-client PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/kube-apiserver-kubelet-client"
+    data:
+      allowed_domains: "kube-apiserver-kubelet-client"
+      allow_bare_domains: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "system:masters"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# kube-controller-manager certificate role
+- name: Create kube-controller-manager PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/kube-controller-manager"
+    data:
+      allow_any_name: true
+      enforce_hostnames: false
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# kube-scheduler certificate role
+- name: Create kube-scheduler PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/kube-scheduler"
+    data:
+      allow_any_name: true
+      enforce_hostnames: false
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# admin certificate role
+- name: Create admin PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/admin"
+    data:
+      allowed_domains: "kubernetes-admin"
+      allow_bare_domains: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "system:masters"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# service-account certificate role
+- name: Create service-account PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/service-account"
+    data:
+      allowed_domains: "service-accounts"
+      allow_bare_domains: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# kube-proxy certificate role
+- name: Create kube-proxy PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/kube-proxy"
+    data:
+      allow_any_name: true
+      enforce_hostnames: false
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "system:node-proxier"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# kubelet-server certificate role (per-node)
+- name: Create kubelet-server PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/kubelet-server"
+    data:
+      allow_any_name: true
+      enforce_hostnames: false
+      allow_ip_sans: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "system:nodes"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# kubelet-client certificate role (per-node)
+- name: Create kubelet-client PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/roles/kubelet-client"
+    data:
+      allow_any_name: true
+      enforce_hostnames: false
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "system:nodes"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# -----------------------------------------------------------------------------
+# etcd PKI Roles
+# -----------------------------------------------------------------------------
+
+# etcd-server certificate role
+- name: Create etcd-server PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/roles/etcd-server"
+    data:
+      allowed_domains: "{{ etcd_hostnames | join(',') }},localhost"
+      allow_bare_domains: true
+      allow_ip_sans: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# etcd-peer certificate role
+- name: Create etcd-peer PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/roles/etcd-peer"
+    data:
+      allowed_domains: "{{ etcd_hostnames | join(',') }}"
+      allow_bare_domains: true
+      allow_ip_sans: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# etcd-client certificate role (for kube-apiserver)
+- name: Create etcd-client PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/roles/etcd-client"
+    data:
+      allowed_domains: "kube-apiserver-etcd-client,etcd-healthcheck-client"
+      allow_bare_domains: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# etcd-healthcheck-client certificate role
+- name: Create etcd-healthcheck PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/roles/etcd-healthcheck"
+    data:
+      allowed_domains: "etcd-healthcheck-client"
+      allow_bare_domains: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+# -----------------------------------------------------------------------------
+# Front Proxy PKI Role
+# -----------------------------------------------------------------------------
+
+# front-proxy-client certificate role
+- name: Create front-proxy-client PKI role
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_front_proxy_path }}/roles/front-proxy-client"
+    data:
+      allowed_domains: "front-proxy-client"
+      allow_bare_domains: true
+      max_ttl: "{{ leaf_cert_max_ttl }}"
+      key_type: "{{ leaf_cert_key_type }}"
+      key_bits: "{{ leaf_cert_key_bits }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+
+- name: PKI roles created
+  ansible.builtin.debug:
+    msg: |
+      PKI roles created:
+        Kubernetes: kube-apiserver, kube-apiserver-kubelet-client, kube-controller-manager,
+                    kube-scheduler, admin, service-account, kube-proxy, kubelet-server, kubelet-client
+        etcd: etcd-server, etcd-peer, etcd-client, etcd-healthcheck
+        Front Proxy: front-proxy-client

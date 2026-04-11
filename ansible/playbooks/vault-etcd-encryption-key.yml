@@ -1,0 +1,96 @@
+---
+# =============================================================================
+# Store etcd Encryption Key in Vault
+# =============================================================================
+# Generates a 32-byte encryption key and stores it in Vault KV v2.
+# This key is used by kube-apiserver to encrypt secrets at rest in etcd.
+#
+# Usage:
+#   ansible-playbook -i inventory/homelab.yml playbooks/vault-etcd-encryption-key.yml
+#
+# Prerequisites:
+#   - Vault must be running and unsealed
+#   - VAULT_TOKEN env var must be set (or credentials file available)
+# =============================================================================
+
+- name: Store etcd encryption key in Vault
+  hosts: localhost
+  gather_facts: false
+  vars:
+    vault_addr: "http://vault:8200"
+    vault_token: "{{ lookup('env', 'VAULT_TOKEN') | default(lookup('file', playbook_dir + '/../.vault-credentials/vault-init.json') | from_json | json_query('root_token'), true) }}"
+    kv_engine_path: "secret"
+    kv_secret_path: "kubernetes/etcd-encryption-key"
+
+  tasks:
+    - name: Install hvac Python library
+      ansible.builtin.pip:
+        name: hvac
+        state: present
+        extra_args: --break-system-packages
+
+    # Check if the KV engine is already enabled
+    - name: List existing secret engines
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/sys/mounts"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+        status_code: 200
+      register: secret_engines
+
+    - name: Enable KV v2 secrets engine
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/sys/mounts/{{ kv_engine_path }}"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+        body_format: json
+        body:
+          type: kv
+          options:
+            version: "2"
+        status_code: [200, 204]
+      when: (kv_engine_path + '/') not in secret_engines.json.keys()
+
+    # Check if key already exists
+    - name: Check if encryption key already exists in Vault
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/{{ kv_engine_path }}/data/{{ kv_secret_path }}"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+        status_code: [200, 404]
+      register: existing_key
+
+    # Generate key only if it doesn't exist
+    - name: Generate 32-byte base64-encoded encryption key
+      ansible.builtin.command: bash -c "head -c 32 /dev/urandom | base64"
+      register: raw_key
+      changed_when: false
+      when: existing_key.status == 404
+
+    - name: Set encryption key fact
+      ansible.builtin.set_fact:
+        encryption_key: "{{ raw_key.stdout | trim }}"
+      when: existing_key.status == 404
+
+    - name: Store encryption key in Vault KV v2
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/{{ kv_engine_path }}/data/{{ kv_secret_path }}"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+        body_format: json
+        body:
+          data:
+            key: "{{ encryption_key }}"
+        status_code: [200, 204]
+      when: existing_key.status == 404
+
+    - name: Encryption key status
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Encryption key already exists in Vault at ' + kv_engine_path + '/' + kv_secret_path
+             if existing_key.status == 200
+             else 'New encryption key generated and stored in Vault at ' + kv_engine_path + '/' + kv_secret_path }}

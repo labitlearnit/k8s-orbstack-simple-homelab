@@ -1,0 +1,61 @@
+#cloud-config
+hostname: vault
+manage_etc_hosts: false
+
+users:
+  - default
+  - name: k8s
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - openssh-server
+  - unzip
+  - curl
+  - jq
+  - gnupg
+
+write_files:
+  - path: /etc/hosts
+    content: |
+      127.0.0.1 localhost
+      127.0.1.1 vault
+
+      # K8s Simple Homelab VMs
+      __NETWORK_PREFIX__.11  vault
+      __NETWORK_PREFIX__.12  jump
+
+      # IPv6
+      ::1 ip6-localhost ip6-loopback
+      fe00::0 ip6-localnet
+      ff00::0 ip6-mcastprefix
+      ff02::1 ip6-allnodes
+      ff02::2 ip6-allrouters
+
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - systemctl disable systemd-networkd-wait-online.service || true
+  - systemctl mask systemd-networkd-wait-online.service || true
+
+  # Configure static IP
+  - ip addr add __NETWORK_PREFIX__.11/24 dev eth0 || true
+  - |
+    cat > /etc/netplan/90-static.yaml << 'EOF'
+    network:
+      version: 2
+      ethernets:
+        eth0:
+          addresses:
+            - __NETWORK_PREFIX__.11/24
+    EOF
+  - chmod 600 /etc/netplan/90-static.yaml
+  - netplan apply || true
+
+final_message: "vault box ready after $UPTIME seconds"

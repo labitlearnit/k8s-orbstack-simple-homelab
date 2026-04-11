@@ -1,0 +1,81 @@
+---
+# =============================================================================
+# Vault PKI Role - Main Tasks
+# =============================================================================
+# Sets up complete PKI hierarchy in Vault:
+#   Root CA → Intermediate CA → kubernetes-ca, etcd-ca, front-proxy-ca
+# Then creates PKI roles for certificate issuance.
+# =============================================================================
+
+- name: Validate Vault token is set
+  ansible.builtin.assert:
+    that:
+      - vault_token | length > 0
+    fail_msg: "VAULT_TOKEN environment variable must be set"
+    quiet: true
+
+# -----------------------------------------------------------------------------
+# Step 0: Install hvac Python library (required by community.hashi_vault)
+# -----------------------------------------------------------------------------
+- name: Install hvac Python library
+  ansible.builtin.pip:
+    name: hvac
+    state: present
+    extra_args: --break-system-packages
+  delegate_to: localhost
+
+# -----------------------------------------------------------------------------
+# Step 1: Enable PKI Engines
+# -----------------------------------------------------------------------------
+- name: Enable PKI secret engines
+  ansible.builtin.include_tasks: pki_engines.yml
+
+# -----------------------------------------------------------------------------
+# Step 2: Generate Root CA
+# -----------------------------------------------------------------------------
+- name: Generate Root CA
+  ansible.builtin.include_tasks: root_ca.yml
+
+# -----------------------------------------------------------------------------
+# Step 3: Generate and Sign Intermediate CA
+# -----------------------------------------------------------------------------
+- name: Generate and sign Intermediate CA
+  ansible.builtin.include_tasks: intermediate_ca.yml
+
+# -----------------------------------------------------------------------------
+# Step 4: Generate and Sign Sub-CAs
+# -----------------------------------------------------------------------------
+- name: Generate and sign Sub-CAs
+  ansible.builtin.include_tasks: sub_cas.yml
+
+# -----------------------------------------------------------------------------
+# Step 5: Create PKI Roles for Certificate Issuance
+# -----------------------------------------------------------------------------
+- name: Create PKI roles
+  ansible.builtin.include_tasks: pki_roles.yml
+
+- name: PKI setup complete
+  ansible.builtin.debug:
+    msg: |
+      
+      ════════════════════════════════════════════════════════════
+      Vault PKI Hierarchy Setup Complete!
+      ════════════════════════════════════════════════════════════
+      
+      PKI Engines:
+        - {{ pki_root_path }} (Root CA)
+        - {{ pki_int_path }} (Intermediate CA)
+        - {{ pki_kubernetes_path }} (Kubernetes CA)
+        - {{ pki_etcd_path }} (etcd CA)
+        - {{ pki_front_proxy_path }} (Front Proxy CA)
+      
+      CA Hierarchy:
+        Root CA ({{ root_ca_ttl }})
+          └── Intermediate CA ({{ intermediate_ca_ttl }})
+              ├── Kubernetes CA ({{ sub_ca_ttl }})
+              ├── etcd CA ({{ sub_ca_ttl }})
+              └── Front Proxy CA ({{ sub_ca_ttl }})
+      
+      Leaf cert max TTL: {{ leaf_cert_max_ttl }}
+      
+      ════════════════════════════════════════════════════════════

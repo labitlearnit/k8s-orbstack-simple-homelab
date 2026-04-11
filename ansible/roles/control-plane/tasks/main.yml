@@ -1,0 +1,91 @@
+---
+# Control Plane Setup - Main tasks
+
+- name: Set node IP address
+  ansible.builtin.set_fact:
+    node_ip: "{{ static_ip }}"
+
+- name: Create kubernetes directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ k8s_config_dir }}"
+    - "{{ k8s_manifests_dir }}"
+    - /var/lib/kubernetes
+    - /var/log/kubernetes
+  become: true
+
+# Download Kubernetes binaries
+- name: Check if kube-apiserver exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/kube-apiserver
+  register: apiserver_binary
+
+# Check if binaries were pre-cached by create-all-vms.sh
+- name: Check for pre-cached binaries on jump
+  ansible.builtin.stat:
+    path: /tmp/k8s-binaries/.pre-cached
+  register: k8s_pre_cached
+  delegate_to: localhost
+  run_once: true
+
+# Download to jump server only if not pre-cached
+- name: Ensure binary cache directory exists on jump
+  ansible.builtin.file:
+    path: /tmp/k8s-binaries
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  run_once: true
+  when: not apiserver_binary.stat.exists and not k8s_pre_cached.stat.exists
+
+- name: Download binaries to jump server (cached)
+  ansible.builtin.get_url:
+    url: "{{ k8s_download_url }}/{{ item }}"
+    dest: "/tmp/k8s-binaries/{{ item }}"
+    mode: '0755'
+    timeout: 300
+  loop:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubectl
+  delegate_to: localhost
+  run_once: true
+  when: not apiserver_binary.stat.exists and not k8s_pre_cached.stat.exists
+
+- name: Copy binaries to masters
+  ansible.builtin.copy:
+    src: "/tmp/k8s-binaries/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+  loop:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubectl
+  when: not apiserver_binary.stat.exists
+  become: true
+
+# Include component tasks
+- name: Configure kube-apiserver
+  ansible.builtin.include_tasks: apiserver.yml
+
+- name: Configure kube-controller-manager
+  ansible.builtin.include_tasks: controller-manager.yml
+
+- name: Configure kube-scheduler
+  ansible.builtin.include_tasks: scheduler.yml
+
+- name: Create admin kubeconfig
+  ansible.builtin.include_tasks: admin-kubeconfig.yml
+
+# Wait for API server to be ready
+- name: Wait for kube-apiserver to be ready
+  ansible.builtin.wait_for:
+    port: "{{ apiserver_port }}"
+    host: "{{ node_ip }}"
+    delay: 5
+    timeout: 60

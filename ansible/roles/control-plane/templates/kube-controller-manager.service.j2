@@ -1,0 +1,30 @@
+[Unit]
+Description=Kubernetes Controller Manager
+Documentation=https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/kube-controller-manager \
+  --allocate-node-cidrs=true \
+  --authentication-kubeconfig={{ k8s_config_dir }}/controller-manager.kubeconfig \
+  --authorization-kubeconfig={{ k8s_config_dir }}/controller-manager.kubeconfig \
+  --bind-address=0.0.0.0 \
+  --client-ca-file={{ k8s_cert_dir }}/ca.crt \
+  --cluster-cidr={{ pod_cidr }} \
+  --cluster-name=kubernetes \
+  --controllers=*,bootstrapsigner,tokencleaner \
+  --kubeconfig={{ k8s_config_dir }}/controller-manager.kubeconfig \
+  --leader-elect=true \
+  --requestheader-client-ca-file={{ k8s_cert_dir }}/front-proxy-ca.crt \
+  --root-ca-file={{ k8s_cert_dir }}/ca.crt \
+  --service-account-private-key-file={{ k8s_cert_dir }}/sa.key \
+  --service-cluster-ip-range={{ service_cidr }} \
+  --use-service-account-credentials=true \
+  --v=2
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

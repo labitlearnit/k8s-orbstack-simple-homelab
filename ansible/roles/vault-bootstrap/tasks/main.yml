@@ -1,0 +1,291 @@
+---
+# Vault Bootstrap Role - Main Tasks
+# Installs, configures, initializes and unseals HashiCorp Vault
+
+- name: Install dependencies
+  ansible.builtin.apt:
+    name:
+      - unzip
+      - curl
+      - jq
+      - gnupg
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Create vault group
+  ansible.builtin.group:
+    name: "{{ vault_group }}"
+    system: yes
+  become: true
+
+- name: Create vault user
+  ansible.builtin.user:
+    name: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    system: yes
+    shell: /bin/false
+    home: "{{ vault_data_dir }}"
+    create_home: no
+  become: true
+
+- name: Create vault directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: '0750'
+  loop:
+    - "{{ vault_config_dir }}"
+    - "{{ vault_data_dir }}"
+  become: true
+
+- name: Check if vault is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/vault
+  register: vault_binary
+
+- name: Get installed vault version
+  ansible.builtin.command: /usr/local/bin/vault version
+  register: vault_installed_version
+  changed_when: false
+  failed_when: false
+  when: vault_binary.stat.exists
+
+- name: Download Vault binary
+  when: not vault_binary.stat.exists or vault_version not in (vault_installed_version.stdout | default(''))
+  block:
+    - name: Import HashiCorp GPG key
+      ansible.builtin.shell: |
+        curl -fsSL https://keybase.io/hashicorp/pgp_keys.asc | gpg --import
+      args:
+        creates: ~/.gnupg/trustdb.gpg
+      become: true
+
+    - name: Download SHA256SUMS file
+      ansible.builtin.get_url:
+        url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_SHA256SUMS"
+        dest: /tmp/vault_SHA256SUMS
+        mode: '0644'
+
+    - name: Download SHA256SUMS signature file
+      ansible.builtin.get_url:
+        url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_SHA256SUMS.sig"
+        dest: /tmp/vault_SHA256SUMS.sig
+        mode: '0644'
+
+    - name: Verify GPG signature of SHA256SUMS
+      ansible.builtin.command: gpg --verify /tmp/vault_SHA256SUMS.sig /tmp/vault_SHA256SUMS
+      become: true
+      changed_when: false
+
+    - name: Download Vault zip
+      ansible.builtin.get_url:
+        url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_arm64.zip"
+        dest: /tmp/vault.zip
+        mode: '0644'
+
+    - name: Get expected checksum for ARM64
+      ansible.builtin.shell: grep "vault_{{ vault_version }}_linux_arm64.zip" /tmp/vault_SHA256SUMS | awk '{print $1}'
+      register: expected_checksum
+      changed_when: false
+
+    - name: Verify Vault zip checksum
+      ansible.builtin.stat:
+        path: /tmp/vault.zip
+        checksum_algorithm: sha256
+      register: vault_zip_stat
+
+    - name: Fail if checksum does not match
+      ansible.builtin.fail:
+        msg: "Checksum verification failed! Expected: {{ expected_checksum.stdout }}, Got: {{ vault_zip_stat.stat.checksum }}"
+      when: vault_zip_stat.stat.checksum != expected_checksum.stdout
+
+    - name: Clean up verification files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/vault_SHA256SUMS
+        - /tmp/vault_SHA256SUMS.sig
+
+- name: Extract Vault binary
+  ansible.builtin.unarchive:
+    src: /tmp/vault.zip
+    dest: /usr/local/bin/
+    remote_src: yes
+    mode: '0755'
+  become: true
+  when: not vault_binary.stat.exists or vault_version not in (vault_installed_version.stdout | default(''))
+  notify: restart vault
+
+- name: Remove downloaded zip
+  ansible.builtin.file:
+    path: /tmp/vault.zip
+    state: absent
+
+- name: Set vault binary capabilities (allow mlock)
+  ansible.builtin.command: setcap cap_ipc_lock=+ep /usr/local/bin/vault
+  become: true
+  changed_when: false
+
+- name: Deploy Vault configuration
+  ansible.builtin.template:
+    src: vault.hcl.j2
+    dest: "{{ vault_config_dir }}/vault.hcl"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: '0640'
+  become: true
+  notify: restart vault
+
+- name: Deploy Vault systemd service
+  ansible.builtin.template:
+    src: vault.service.j2
+    dest: /etc/systemd/system/vault.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  notify:
+    - reload systemd
+    - restart vault
+
+- name: Enable and start Vault service
+  ansible.builtin.systemd:
+    name: vault
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: true
+
+- name: Flush handlers (ensure Vault restarts complete before init/unseal)
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Vault to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ vault_port }}/v1/sys/health"
+    method: GET
+    status_code: [200, 429, 472, 473, 501, 503]  # 503 = sealed (valid, we'll unseal later)
+  register: vault_health
+  until: vault_health.status in [200, 429, 472, 473, 501, 503]
+  retries: 10
+  delay: 3
+
+- name: Check if Vault is initialized
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ vault_port }}/v1/sys/init"
+    method: GET
+  register: vault_init_status
+
+- name: Initialize Vault
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ vault_port }}/v1/sys/init"
+    method: PUT
+    body_format: json
+    body:
+      secret_shares: "{{ vault_key_shares }}"
+      secret_threshold: "{{ vault_key_threshold }}"
+  register: vault_init_result
+  when: not vault_init_status.json.initialized
+
+- name: Set fact for just initialized
+  ansible.builtin.set_fact:
+    vault_just_initialized: "{{ vault_init_result.json['keys'] is defined }}"
+  when: vault_init_result is not skipped
+
+- name: Create local credentials directory
+  ansible.builtin.file:
+    path: "{{ vault_credentials_dir }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  become: false
+  when: vault_just_initialized | default(false)
+
+- name: Save Vault credentials locally
+  ansible.builtin.copy:
+    content: |
+      # Vault Credentials - KEEP SECURE!
+      # Generated: {{ ansible_date_time.iso8601 }}
+      
+      Root Token: {{ vault_init_result.json.root_token }}
+      
+      Unseal Keys:
+      {% for key in vault_init_result.json['keys'] %}
+      Key {{ loop.index }}: {{ key }}
+      {% endfor %}
+      
+      Unseal Keys (Base64):
+      {% for key in vault_init_result.json['keys_base64'] %}
+      Key {{ loop.index }}: {{ key }}
+      {% endfor %}
+    dest: "{{ vault_credentials_dir }}/vault-credentials.txt"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  when: vault_just_initialized | default(false)
+
+- name: Save credentials as JSON
+  ansible.builtin.copy:
+    content: "{{ vault_init_result.json | to_nice_json }}"
+    dest: "{{ vault_credentials_dir }}/vault-init.json"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  when: vault_just_initialized | default(false)
+
+- name: Load existing credentials if not just initialized
+  ansible.builtin.slurp:
+    src: "{{ vault_credentials_dir }}/vault-init.json"
+  delegate_to: localhost
+  become: false
+  register: existing_credentials
+  when: not (vault_just_initialized | default(false)) and vault_init_status.json.initialized
+
+- name: Set credentials fact from init result
+  ansible.builtin.set_fact:
+    vault_credentials: "{{ vault_init_result.json }}"
+  when: vault_just_initialized | default(false)
+
+- name: Set credentials fact from existing file
+  ansible.builtin.set_fact:
+    vault_credentials: "{{ existing_credentials.content | b64decode | from_json }}"
+  when: 
+    - not (vault_just_initialized | default(false))
+    - existing_credentials is defined
+    - existing_credentials is not skipped
+
+- name: Check Vault seal status
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ vault_port }}/v1/sys/seal-status"
+    method: GET
+  register: vault_seal_status
+
+- name: Unseal Vault
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ vault_port }}/v1/sys/unseal"
+    method: PUT
+    body_format: json
+    body:
+      key: "{{ item }}"
+  loop: "{{ vault_credentials['keys'][:vault_key_threshold] }}"
+  when: vault_seal_status.json.sealed
+  no_log: true
+
+- name: Verify Vault is unsealed
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ vault_port }}/v1/sys/seal-status"
+    method: GET
+  register: vault_final_status
+  failed_when: vault_final_status.json.sealed
+
+- name: Display Vault status
+  ansible.builtin.debug:
+    msg: |
+      Vault is ready!
+      Address: http://{{ ansible_host | default(inventory_hostname) }}:{{ vault_port }}
+      Initialized: {{ vault_final_status.json.initialized }}
+      Sealed: {{ vault_final_status.json.sealed }}
+      Credentials saved to: {{ vault_credentials_dir }}/

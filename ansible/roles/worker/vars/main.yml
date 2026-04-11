@@ -1,0 +1,28 @@
+---
+# Kubernetes version (must match control-plane)
+k8s_version: "1.32.0"
+
+# Binary download URL
+k8s_download_url: "https://dl.k8s.io/release/v{{ k8s_version }}/bin/linux/arm64"
+
+# Certificate directories
+k8s_cert_dir: "/etc/kubernetes/pki"
+
+# Kubernetes directories
+k8s_config_dir: "/etc/kubernetes"
+
+# Network
+pod_cidr: "10.244.0.0/16"
+cluster_dns: "10.96.0.10"
+service_cidr: "10.96.0.0/12"
+
+# API Server (single master, no load balancer)
+haproxy_ip: "{{ network_prefix }}.31"
+apiserver_port: 6443
+
+# Kubelet
+kubelet_port: 10250
+
+# Container runtime
+containerd_version: "1.7.24"
+runc_version: "1.2.4"

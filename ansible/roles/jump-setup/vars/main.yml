@@ -1,0 +1,20 @@
+---
+# Jump server setup variables
+
+# SSH key used for accessing all VMs from jump
+ssh_key_private_src: "{{ lookup('env', 'HOME') }}/.ssh/k8slab.key"
+ssh_key_private_dest: "~/.ssh/k8slab.key"
+
+# Network prefix for VM IPs (set by inventory)
+network_prefix: "{{ hostvars['localhost']['network_prefix'] | default('192.168.139') }}"
+
+# All VMs (for SSH config generation — excluding jump itself)
+vm_definitions:
+  - { name: "vault",    ip_suffix: 11 }
+  - { name: "etcd-1",   ip_suffix: 21 }
+  - { name: "master-1", ip_suffix: 31 }
+  - { name: "worker-1", ip_suffix: 41 }
+  - { name: "worker-2", ip_suffix: 42 }
+
+# Project directory on jump
+project_dir_jump: "~/k8s-orbstack-simple-homelab"

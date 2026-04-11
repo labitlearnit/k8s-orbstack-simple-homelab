@@ -1,0 +1,85 @@
+---
+# =============================================================================
+# K8s Certificates Role - Direct Issuance
+# =============================================================================
+# Issues certificates from Vault PKI and deploys directly to nodes.
+# No KV storage - certs are issued fresh each run.
+#
+# Run against specific host groups:
+#   - etcd_servers: etcd certs
+#   - k8s_masters: control plane certs
+#   - k8s_workers: kubelet certs
+# =============================================================================
+
+# Install hvac Python library (required by community.hashi_vault)
+- name: Install hvac Python library
+  ansible.builtin.pip:
+    name: hvac
+    state: present
+    extra_args: --break-system-packages
+  delegate_to: localhost
+  run_once: true
+
+- name: Validate Vault token is set
+  ansible.builtin.assert:
+    that:
+      - vault_token | length > 0
+    fail_msg: "VAULT_TOKEN environment variable or vault_token must be set"
+    quiet: true
+  run_once: true
+  delegate_to: localhost
+
+- name: Create certificate directory
+  ansible.builtin.file:
+    path: "{{ k8s_cert_dir }}"
+    state: directory
+    mode: '0755'
+  become: true
+  when: "'k8s_masters' in group_names or 'k8s_workers' in group_names"
+
+- name: Create etcd cert directory on masters
+  ansible.builtin.file:
+    path: "{{ k8s_cert_dir }}/etcd"
+    state: directory
+    mode: '0755'
+  become: true
+  when: "'k8s_masters' in group_names"
+
+- name: Create etcd certificate directory
+  ansible.builtin.file:
+    path: "{{ etcd_cert_dir }}"
+    state: directory
+    mode: '0755'
+  become: true
+  when: "'etcd_servers' in group_names"
+
+# -----------------------------------------------------------------------------
+# Fetch and Deploy CA Certificates
+# -----------------------------------------------------------------------------
+- name: Include CA certificate tasks
+  ansible.builtin.include_tasks: deploy_ca_certs.yml
+
+# -----------------------------------------------------------------------------
+# etcd Certificates (etcd nodes only)
+# -----------------------------------------------------------------------------
+- name: Include etcd certificate tasks
+  ansible.builtin.include_tasks: etcd_certs.yml
+  when: "'etcd_servers' in group_names"
+
+# -----------------------------------------------------------------------------
+# Control Plane Certificates (masters only)
+# -----------------------------------------------------------------------------
+- name: Include control plane certificate tasks
+  ansible.builtin.include_tasks: control_plane_certs.yml
+  when: "'k8s_masters' in group_names"
+
+# -----------------------------------------------------------------------------
+# Kubelet Certificates (masters and workers)
+# -----------------------------------------------------------------------------
+- name: Include kubelet certificate tasks
+  ansible.builtin.include_tasks: kubelet_certs.yml
+  when: "'k8s_masters' in group_names or 'k8s_workers' in group_names"
+
+- name: Certificate deployment complete
+  ansible.builtin.debug:
+    msg: "Certificates deployed to {{ inventory_hostname }}"

@@ -1,0 +1,155 @@
+---
+# Download and install etcd
+
+- name: Set node IP address
+  ansible.builtin.set_fact:
+    node_ip: "{{ static_ip }}"
+
+- name: Debug node IP
+  ansible.builtin.debug:
+    msg: "Node {{ inventory_hostname }} has IP {{ node_ip }}"
+
+- name: Create etcd group
+  ansible.builtin.group:
+    name: etcd
+    system: true
+    state: present
+  become: true
+
+- name: Create etcd user
+  ansible.builtin.user:
+    name: etcd
+    group: etcd
+    system: true
+    shell: /bin/false
+    home: "{{ etcd_data_dir }}"
+    create_home: no
+  become: true
+
+- name: Create etcd directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ etcd_data_dir }}", mode: '0700' }
+    - { path: /etc/etcd, mode: '0755' }
+  become: true
+
+- name: Set ownership of etcd cert directory
+  ansible.builtin.file:
+    path: "{{ etcd_cert_dir }}"
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: '0700'
+    recurse: true
+  become: true
+
+- name: Check if etcd binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/etcd
+  register: etcd_binary
+
+- name: Check etcd version if binary exists
+  ansible.builtin.command:
+    cmd: /usr/local/bin/etcd --version
+  register: etcd_current_version
+  changed_when: false
+  failed_when: false
+  when: etcd_binary.stat.exists
+
+# Check if etcd tarball was pre-cached by create-all-vms.sh
+- name: Check for pre-cached etcd tarball on jump
+  ansible.builtin.stat:
+    path: /tmp/etcd-cache/.pre-cached
+  register: etcd_pre_cached
+  delegate_to: localhost
+  run_once: true
+
+- name: Copy pre-cached etcd tarball from jump
+  ansible.builtin.copy:
+    src: "/tmp/etcd-cache/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    dest: "/tmp/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    mode: '0644'
+  when:
+    - etcd_pre_cached.stat.exists
+    - not etcd_binary.stat.exists or (etcd_current_version.stdout is defined and etcd_version not in etcd_current_version.stdout)
+  become: true
+
+- name: Download etcd tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    dest: "/tmp/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    mode: '0644'
+  when:
+    - not etcd_pre_cached.stat.exists
+    - not etcd_binary.stat.exists or (etcd_current_version.stdout is defined and etcd_version not in etcd_current_version.stdout)
+  become: true
+
+- name: Extract etcd tarball
+  ansible.builtin.unarchive:
+    src: "/tmp/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    dest: /tmp
+    remote_src: true
+  when: not etcd_binary.stat.exists or (etcd_current_version.stdout is defined and etcd_version not in etcd_current_version.stdout)
+  become: true
+
+- name: Install etcd binaries
+  ansible.builtin.copy:
+    src: "/tmp/etcd-v{{ etcd_version }}-linux-arm64/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+    owner: root
+    group: root
+    remote_src: true
+  loop:
+    - etcd
+    - etcdctl
+    - etcdutl
+  when: not etcd_binary.stat.exists or (etcd_current_version.stdout is defined and etcd_version not in etcd_current_version.stdout)
+  become: true
+
+- name: Clean up downloaded files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/etcd-v{{ etcd_version }}-linux-arm64.tar.gz"
+    - "/tmp/etcd-v{{ etcd_version }}-linux-arm64"
+  become: true
+
+- name: Build initial cluster string
+  ansible.builtin.set_fact:
+    etcd_initial_cluster: "{{ etcd_cluster_members | map(attribute='name') | map('regex_replace', '^(.*)$', '\\1=https://\\1:' ~ etcd_peer_port) | join(',') }}"
+
+- name: Debug initial cluster string
+  ansible.builtin.debug:
+    var: etcd_initial_cluster
+
+- name: Create etcd systemd service
+  ansible.builtin.template:
+    src: etcd.service.j2
+    dest: /etc/systemd/system/etcd.service
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart etcd
+  become: true
+
+- name: Enable and start etcd
+  ansible.builtin.systemd:
+    name: etcd
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Wait for etcd to be ready
+  ansible.builtin.wait_for:
+    port: "{{ etcd_client_port }}"
+    host: "{{ node_ip }}"
+    delay: 5
+    timeout: 60

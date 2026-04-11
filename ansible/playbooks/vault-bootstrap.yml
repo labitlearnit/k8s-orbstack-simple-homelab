@@ -1,0 +1,44 @@
+---
+# Vault Bootstrap Playbook
+# Installs, configures, initializes and unseals HashiCorp Vault
+#
+# Usage:
+#   ansible-playbook playbooks/vault-bootstrap.yml
+#
+# After running:
+#   - Vault will be running at http://vault:8200
+#   - Credentials saved to ansible/.vault-credentials/
+#   - Root token and unseal keys in vault-credentials.txt
+#
+# To access Vault UI from Mac:
+#   open http://vault:8200
+
+- name: Bootstrap HashiCorp Vault
+  hosts: vault_servers
+  gather_facts: true
+  
+  roles:
+    - ../roles/vault-bootstrap
+    
+  post_tasks:
+    - name: Summary
+      ansible.builtin.debug:
+        msg: |
+          
+          ════════════════════════════════════════════════════════════
+          Vault Bootstrap Complete!
+          ════════════════════════════════════════════════════════════
+          
+          Vault Address: http://{{ inventory_hostname }}:8200
+          
+          Credentials:   ~/k8s-orbstack-simple-homelab/ansible/.vault-credentials/
+            - vault-credentials.txt (human readable)
+            - vault-init.json (for automation)
+          
+          Next Steps:
+            1. export VAULT_ADDR='http://vault:8200'
+            2. export VAULT_TOKEN='<root_token>'
+            3. vault status
+          
+          Or use Terraform for PKI setup (Step 3)
+          ════════════════════════════════════════════════════════════

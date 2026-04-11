@@ -1,0 +1,55 @@
+#cloud-config
+hostname: master-1
+manage_etc_hosts: false
+
+users:
+  - default
+  - name: k8s
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+
+package_update: false
+package_upgrade: false
+
+packages:
+  - openssh-server
+
+write_files:
+  - path: /etc/hosts
+    content: |
+      127.0.0.1 localhost
+      127.0.1.1 master-1
+
+      # K8s Simple Homelab VMs
+      __NETWORK_PREFIX__.11  vault
+      __NETWORK_PREFIX__.12  jump
+      __NETWORK_PREFIX__.21  etcd-1
+      __NETWORK_PREFIX__.31  master-1
+      __NETWORK_PREFIX__.41  worker-1
+      __NETWORK_PREFIX__.42  worker-2
+
+      # IPv6
+      ::1 ip6-localhost ip6-loopback
+
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - systemctl disable systemd-networkd-wait-online.service || true
+  - systemctl mask systemd-networkd-wait-online.service || true
+  - ip addr add __NETWORK_PREFIX__.31/24 dev eth0 || true
+  - |
+    cat > /etc/netplan/90-static.yaml << 'EOF'
+    network:
+      version: 2
+      ethernets:
+        eth0:
+          addresses:
+            - __NETWORK_PREFIX__.31/24
+    EOF
+  - chmod 600 /etc/netplan/90-static.yaml
+  - netplan apply || true
+
+final_message: "master-1 ready after $UPTIME seconds"

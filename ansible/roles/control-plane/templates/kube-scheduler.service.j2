@@ -1,0 +1,19 @@
+[Unit]
+Description=Kubernetes Scheduler
+Documentation=https://kubernetes.io/docs/reference/command-line-tools-reference/kube-scheduler/
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/kube-scheduler \
+  --config={{ k8s_config_dir }}/kube-scheduler-config.yaml \
+  --authentication-kubeconfig={{ k8s_config_dir }}/scheduler.kubeconfig \
+  --authorization-kubeconfig={{ k8s_config_dir }}/scheduler.kubeconfig \
+  --bind-address=0.0.0.0 \
+  --v=2
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

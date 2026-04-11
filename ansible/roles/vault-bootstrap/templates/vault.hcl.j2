@@ -1,0 +1,20 @@
+# Vault configuration file
+# Managed by Ansible - do not edit manually
+
+ui = true
+
+listener "tcp" {
+  address     = "{{ vault_address }}:{{ vault_port }}"
+  tls_disable = {{ vault_tls_disable | lower }}
+}
+
+storage "{{ vault_storage_backend }}" {
+{% if vault_storage_backend == "file" %}
+  path = "{{ vault_data_dir }}"
+{% endif %}
+}
+
+api_addr = "http://{{ inventory_hostname }}:{{ vault_port }}"
+cluster_addr = "http://{{ inventory_hostname }}:{{ vault_cluster_port }}"
+
+disable_mlock = false

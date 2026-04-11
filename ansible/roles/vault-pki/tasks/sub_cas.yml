@@ -1,0 +1,177 @@
+---
+# =============================================================================
+# Generate and Sign Sub-CAs (kubernetes, etcd, front-proxy)
+# =============================================================================
+# These are leaf CAs (pathlen: 0) - they cannot sign other CAs,
+# only leaf certificates.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Kubernetes CA
+# -----------------------------------------------------------------------------
+- name: Check if Kubernetes CA already exists
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/cert/ca"
+  register: k8s_ca_check
+  failed_when: false
+
+- name: Generate Kubernetes CA CSR
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/intermediate/generate/internal"
+    data:
+      common_name: "{{ kubernetes_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      key_type: "rsa"
+      key_bits: 4096
+  register: k8s_csr
+  when: k8s_ca_check.data is not defined
+
+- name: Sign Kubernetes CA with Intermediate CA
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_int_path }}/root/sign-intermediate"
+    data:
+      csr: "{{ k8s_csr.data.data.csr }}"
+      common_name: "{{ kubernetes_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      ttl: "{{ sub_ca_ttl }}"
+      max_path_length: 0
+      use_csr_values: true
+  register: k8s_signed
+  when: k8s_ca_check.data is not defined
+
+- name: Set Kubernetes CA signed certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_kubernetes_path }}/intermediate/set-signed"
+    data:
+      certificate: "{{ k8s_signed.data.data.certificate }}"
+  when: k8s_ca_check.data is not defined
+
+# -----------------------------------------------------------------------------
+# etcd CA
+# -----------------------------------------------------------------------------
+- name: Check if etcd CA already exists
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/cert/ca"
+  register: etcd_ca_check
+  failed_when: false
+
+- name: Generate etcd CA CSR
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/intermediate/generate/internal"
+    data:
+      common_name: "{{ etcd_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      key_type: "rsa"
+      key_bits: 4096
+  register: etcd_csr
+  when: etcd_ca_check.data is not defined
+
+- name: Sign etcd CA with Intermediate CA
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_int_path }}/root/sign-intermediate"
+    data:
+      csr: "{{ etcd_csr.data.data.csr }}"
+      common_name: "{{ etcd_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      ttl: "{{ sub_ca_ttl }}"
+      max_path_length: 0
+      use_csr_values: true
+  register: etcd_signed
+  when: etcd_ca_check.data is not defined
+
+- name: Set etcd CA signed certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_etcd_path }}/intermediate/set-signed"
+    data:
+      certificate: "{{ etcd_signed.data.data.certificate }}"
+  when: etcd_ca_check.data is not defined
+
+# -----------------------------------------------------------------------------
+# Front Proxy CA
+# -----------------------------------------------------------------------------
+- name: Check if Front Proxy CA already exists
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_front_proxy_path }}/cert/ca"
+  register: fp_ca_check
+  failed_when: false
+
+- name: Generate Front Proxy CA CSR
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_front_proxy_path }}/intermediate/generate/internal"
+    data:
+      common_name: "{{ front_proxy_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      key_type: "rsa"
+      key_bits: 4096
+  register: fp_csr
+  when: fp_ca_check.data is not defined
+
+- name: Sign Front Proxy CA with Intermediate CA
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_int_path }}/root/sign-intermediate"
+    data:
+      csr: "{{ fp_csr.data.data.csr }}"
+      common_name: "{{ front_proxy_ca_cn }}"
+      organization: "{{ ca_organization }}"
+      ou: "{{ ca_ou }}"
+      country: "{{ ca_country }}"
+      locality: "{{ ca_locality }}"
+      ttl: "{{ sub_ca_ttl }}"
+      max_path_length: 0
+      use_csr_values: true
+  register: fp_signed
+  when: fp_ca_check.data is not defined
+
+- name: Set Front Proxy CA signed certificate
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    token: "{{ vault_token }}"
+    path: "{{ pki_front_proxy_path }}/intermediate/set-signed"
+    data:
+      certificate: "{{ fp_signed.data.data.certificate }}"
+  when: fp_ca_check.data is not defined
+
+- name: Sub-CAs status
+  ansible.builtin.debug:
+    msg: |
+      Sub-CAs status:
+        - Kubernetes CA: {{ 'Generated' if k8s_ca_check.data is not defined else 'Already exists' }}
+        - etcd CA: {{ 'Generated' if etcd_ca_check.data is not defined else 'Already exists' }}
+        - Front Proxy CA: {{ 'Generated' if fp_ca_check.data is not defined else 'Already exists' }}

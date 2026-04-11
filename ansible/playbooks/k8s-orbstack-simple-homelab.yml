@@ -1,0 +1,263 @@
+---
+# =============================================================================
+# K8s OrbStack Simple Homelab - Full Cluster Deployment Playbook
+# =============================================================================
+# End-to-end deployment of a simple (non-HA) K8s cluster on OrbStack VMs.
+#
+# Usage (run from Mac host):
+#   cd ~/k8s-orbstack-simple-homelab/ansible
+#   ansible-playbook -i inventory/localhost.yml playbooks/k8s-orbstack-simple-homelab.yml --ask-become-pass
+#
+# Architecture:
+#   Mac connects ONLY to jump (bastion). All cluster VMs are managed
+#   from the jump server using ansible-playbook over SSH.
+#
+# Cluster (6 VMs):
+#   1 x vault (.11), 1 x jump (.12), 1 x etcd (.21),
+#   1 x master (.31), 2 x workers (.41-.42)
+#
+# Parallelism:
+#   - All VMs created via OrbStack (fast boot)
+#   - Binary downloads run concurrently on Mac while VMs boot
+#   - Phase 3: all cluster deploys run FROM jump server
+# =============================================================================
+
+# =============================================================================
+# Phase 0: Record deployment start time
+# =============================================================================
+
+- name: "Phase 0: Record start time"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Record deployment start timestamp
+      ansible.builtin.set_fact:
+        deploy_start_epoch: "{{ now(fmt='%s') }}"
+
+# =============================================================================
+# Phase 1: Mac Localhost - Provision Infrastructure
+# =============================================================================
+
+# Step 1: Create + start all 6 OrbStack VMs
+- name: "Phase 1: Create OrbStack VMs"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  roles:
+    - role: ../roles/vm-provision
+
+# Step 2: Mac setup (hosts + SSH config) + download binaries in parallel
+- name: "Phase 1: Mac setup + download binaries (while VMs boot)"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  roles:
+    - role: ../roles/mac-setup
+    - role: ../roles/download-binaries
+
+# Step 3: Wait for jump server SSH
+- name: "Phase 1: Wait for jump server SSH"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Wait for jump server SSH to be reachable
+      ansible.builtin.wait_for:
+        host: "{{ jump_ip }}"
+        port: 22
+        timeout: 600
+        delay: 10
+
+    - name: Record Phase 1 end timestamp
+      ansible.builtin.set_fact:
+        phase1_end_epoch: "{{ now(fmt='%s') }}"
+
+# =============================================================================
+# Phase 2: Configure Jump Server (Mac → jump only)
+# =============================================================================
+
+- name: "Phase 2: Configure jump server + copy binaries"
+  hosts: jump_servers
+  gather_facts: true
+  vars_files:
+    - ../roles/download-binaries/vars/main.yml
+  roles:
+    - role: ../roles/jump-setup
+  tasks:
+    - name: Include binary copy tasks
+      ansible.builtin.include_tasks: ../roles/download-binaries/tasks/copy_to_jump.yml
+
+    - name: Wait for ansible-playbook to be available (cloud-init)
+      ansible.builtin.command:
+        cmd: which ansible-playbook
+      register: ansible_check
+      retries: 30
+      delay: 5
+      until: ansible_check.rc == 0
+      changed_when: false
+
+    - name: Jump server fully ready
+      ansible.builtin.debug:
+        msg: "Jump configured, binaries copied, ansible available"
+
+# Record Phase 2 end time on localhost (facts set on jump_servers aren't visible to localhost)
+- name: "Phase 2: Record end time"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Record Phase 2 end timestamp
+      ansible.builtin.set_fact:
+        phase2_end_epoch: "{{ now(fmt='%s') }}"
+
+# =============================================================================
+# Phase 3: Deploy K8s Cluster (ALL playbooks run ON the jump server)
+# =============================================================================
+
+- name: "Phase 3: Deploy cluster from jump server"
+  hosts: jump_servers
+  gather_facts: false
+  vars:
+    ansible_dir: ~/k8s-orbstack-simple-homelab/ansible
+    playbook_cmd: "cd {{ ansible_dir }} && ansible-playbook -i inventory/homelab.yml"
+
+  tasks:
+    # --- Step 5: Vault Full Setup (bootstrap + PKI) ---
+    - name: "Step 5: Run vault-full-setup.yml on jump"
+      ansible.builtin.shell: |
+        {{ playbook_cmd }} playbooks/vault-full-setup.yml
+      args:
+        creates: "{{ ansible_dir }}/.vault-credentials/vault-init.json"
+      register: vault_setup
+
+    - name: Display vault setup result
+      ansible.builtin.debug:
+        msg: "{{ vault_setup.stdout_lines[-5:] }}"
+      when: vault_setup is changed
+
+    # --- Step 6: Issue & deploy K8s certificates ---
+    - name: "Step 6: Run k8s-certs.yml on jump"
+      ansible.builtin.shell: |
+        {{ playbook_cmd }} playbooks/k8s-certs.yml
+      register: certs_result
+
+    - name: Display certs result
+      ansible.builtin.debug:
+        msg: "{{ certs_result.stdout_lines[-3:] }}"
+
+    # --- Step 7: Deploy etcd (single node) ---
+    - name: "Step 7: Run etcd-cluster.yml on jump"
+      ansible.builtin.shell: |
+        {{ playbook_cmd }} playbooks/etcd-cluster.yml
+      register: etcd_result
+
+    - name: Display etcd result
+      ansible.builtin.debug:
+        msg: "{{ etcd_result.stdout_lines[-5:] }}"
+
+    # --- Step 7.5: Store etcd encryption key in Vault ---
+    - name: "Step 7.5: Run vault-etcd-encryption-key.yml on jump"
+      ansible.builtin.shell: |
+        {{ playbook_cmd }} playbooks/vault-etcd-encryption-key.yml
+      register: enc_key_result
+
+    - name: Display encryption key result
+      ansible.builtin.debug:
+        msg: "{{ enc_key_result.stdout_lines[-3:] }}"
+
+    # --- Step 8: Deploy Control Plane (single master) ---
+    - name: "Step 8: Run control-plane.yml on jump"
+      ansible.builtin.shell: |
+        {{ playbook_cmd }} playbooks/control-plane.yml
+      register: cp_result
+
+    - name: Display control plane result
+      ansible.builtin.debug:
+        msg: "{{ cp_result.stdout_lines[-3:] }}"
+
+    # --- Step 9: Deploy Worker Nodes ---
+    - name: "Step 9: Run worker.yml on jump"
+      ansible.builtin.shell: |
+        {{ playbook_cmd }} playbooks/worker.yml
+      register: worker_result
+
+    - name: Display worker result
+      ansible.builtin.debug:
+        msg: "{{ worker_result.stdout_lines[-5:] }}"
+
+    # --- Step 10: Install Calico CNI ---
+    - name: "Step 10: Apply Calico CNI"
+      ansible.builtin.shell: |
+        export KUBECONFIG=~/.kube/config
+        kubectl apply -f /tmp/calico.yaml
+      register: calico_result
+      retries: 5
+      delay: 10
+      until: calico_result.rc == 0
+
+    - name: Display Calico result
+      ansible.builtin.debug:
+        msg: "{{ calico_result.stdout_lines[-3:] }}"
+
+# Record Phase 3 end time on localhost
+- name: "Phase 3: Record end time"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Record Phase 3 end timestamp
+      ansible.builtin.set_fact:
+        phase3_end_epoch: "{{ now(fmt='%s') }}"
+
+# =============================================================================
+# Summary
+# =============================================================================
+- name: "Deployment Complete"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Calculate total deployment time
+      ansible.builtin.set_fact:
+        deploy_elapsed: "{{ now(fmt='%s') | int - deploy_start_epoch | int }}"
+        phase1_duration: "{{ phase1_end_epoch | int - deploy_start_epoch | int }}"
+        phase2_duration: "{{ phase2_end_epoch | int - phase1_end_epoch | int }}"
+        phase3_duration: "{{ phase3_end_epoch | int - phase2_end_epoch | int }}"
+
+    - name: Format deployment duration
+      ansible.builtin.set_fact:
+        deploy_duration: "{{ (deploy_elapsed | int // 60) }}m {{ (deploy_elapsed | int % 60) }}s"
+        phase1_time: "{{ (phase1_duration | int // 60) }}m {{ (phase1_duration | int % 60) }}s"
+        phase2_time: "{{ (phase2_duration | int // 60) }}m {{ (phase2_duration | int % 60) }}s"
+        phase3_time: "{{ (phase3_duration | int // 60) }}m {{ (phase3_duration | int % 60) }}s"
+
+    - name: Show OrbStack VM status
+      ansible.builtin.command:
+        cmd: orb list
+      register: orb_status
+      changed_when: false
+
+    - name: Final summary
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════"
+          - "  K8s OrbStack Simple Homelab - Deployment Complete!"
+          - "═══════════════════════════════════════════════════════════"
+          - ""
+          - "  Phase 1 (Provision Infrastructure): {{ phase1_time }}"
+          - "  Phase 2 (Configure Jump Server):     {{ phase2_time }}"
+          - "  Phase 3 (Deploy K8s Cluster):         {{ phase3_time }}"
+          - "  ─────────────────────────────────────────────────────"
+          - "  Total deployment time:                {{ deploy_duration }}"
+          - ""
+          - "{{ orb_status.stdout }}"
+          - ""
+          - "SSH Access:"
+          - "  ssh jump              (direct)"
+          - "  ssh vault             (via jump)"
+          - "  ssh master-1          (via jump)"
+          - ""
+          - "Kubernetes:"
+          - "  ssh jump"
+          - "  kubectl get nodes"

@@ -1,0 +1,26 @@
+---
+# =============================================================================
+# Issue All K8s Certificates Playbook
+# =============================================================================
+# Issues all certificates from Vault PKI and stores in KV engine.
+#
+# Prerequisites:
+#   - Vault PKI engines configured (pki_kubernetes, pki_etcd, pki_front_proxy)
+#   - PKI roles created for each certificate type
+#   - KV v2 engine enabled at 'secret/'
+#
+# Usage:
+#   export VAULT_TOKEN="<your-token>"
+#   ansible-playbook playbooks/vault-issue-certs.yml
+#
+# Or with token in command:
+#   ansible-playbook playbooks/vault-issue-certs.yml -e vault_token=<token>
+# =============================================================================
+
+- name: Issue and store all K8s certificates in Vault
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  roles:
+    - role: ../roles/vault-issue-certs
