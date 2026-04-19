@@ -17,6 +17,7 @@
     group: k8s
     recurse: true
   become: true
+  tags: jump-setup
 
 - name: Ensure .ssh directory exists
   ansible.builtin.file:
@@ -75,6 +76,7 @@
       }
     create: true
     mode: '0644'
+  tags: jump-setup
 
 - name: Create .profile to source .bashrc
   ansible.builtin.copy:
@@ -88,6 +90,7 @@
     dest: ~/.profile
     mode: '0644'
     force: false
+  tags: jump-setup
 
 - name: Test connectivity to all VMs from jump
   ansible.builtin.command:
