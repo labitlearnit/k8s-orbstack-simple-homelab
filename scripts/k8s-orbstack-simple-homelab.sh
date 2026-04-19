@@ -513,6 +513,10 @@ deploy_cluster() {
     local ansible_cmd="cd ~/k8s-orbstack-simple-homelab/ansible && ansible-playbook -i inventory/homelab.yml"
     local run_on_jump="orb run -m jump -u k8s bash -c"
 
+    # --- Jump Setup (VAULT_TOKEN, .bashrc, etc.) ---
+    log_info "Configuring jump server environment..."
+    $run_on_jump "cd ~/k8s-orbstack-simple-homelab/ansible && ansible-playbook -i inventory/homelab.yml playbooks/k8s-orbstack-simple-homelab.yml --tags jump-setup" || log_warn "Jump setup had issues, continuing..."
+
     # --- Vault ---
     log_info "Deploying Vault (bootstrap + PKI)..."
     $run_on_jump "$ansible_cmd playbooks/vault-full-setup.yml" || { log_error "Vault setup failed"; return 1; }
