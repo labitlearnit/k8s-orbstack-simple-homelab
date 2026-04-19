@@ -2,4 +2,11 @@
 # Mac Setup Role - Variables
 
 mac_ssh_config_marker: "# K8s OrbStack Simple Homelab"
+
+# Hosts to add to Mac /etc/hosts (vault + jump needed from Mac)
+mac_hosts_entries: |
+  {{ network_prefix }}.11  vault
+  {{ network_prefix }}.12  jump
+
+jump_ip: "{{ network_prefix }}.12"
 ssh_key_private: "{{ ansible_env.HOME }}/.ssh/k8slab.key"

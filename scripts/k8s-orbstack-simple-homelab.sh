@@ -333,12 +333,13 @@ ${ssh_config}SSHEOF
 }
 
 # =============================================================================
-# Step 6: Configure macOS /etc/hosts (jump only)
+# Step 6: Configure macOS /etc/hosts (vault + jump)
 # =============================================================================
 setup_mac_hosts() {
     header "Step 6: Configure macOS /etc/hosts [$(elapsed)s]"
     step_start
 
+    local vault_ip="${NETWORK_PREFIX}.11"
     local jump_ip="${NETWORK_PREFIX}.12"
     local marker="# K8s OrbStack Simple Homelab"
 
@@ -348,13 +349,15 @@ setup_mac_hosts() {
         return 0
     fi
 
-    log_info "Adding jump server entry to /etc/hosts (requires sudo)..."
+    log_info "Adding vault + jump entries to /etc/hosts (requires sudo)..."
     sudo bash -c "cat >> /etc/hosts << EOF
 
 ${marker} BEGIN
+${vault_ip}  vault
 ${jump_ip}  jump
 ${marker} END
 EOF"
+    log_info "Added: ${vault_ip}  vault"
     log_info "Added: ${jump_ip}  jump"
     step_duration
 }

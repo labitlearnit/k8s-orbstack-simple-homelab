@@ -3,7 +3,7 @@
 # Mac Host Setup Role
 # =============================================================================
 # Configures the Mac host for SSH access:
-#   1. Update /etc/hosts (jump only)
+#   1. Update /etc/hosts (vault + jump)
 #   2. Setup SSH config for jump (bastion) + ProxyJump for other VMs
 # =============================================================================
 
@@ -17,12 +17,11 @@
   changed_when: false
   become: true
 
-- name: Add jump server entry to /etc/hosts
+- name: Add K8s Homelab entries to /etc/hosts
   ansible.builtin.blockinfile:
     path: /etc/hosts
     marker: "{{ mac_ssh_config_marker }} {mark}"
-    block: |
-      {{ jump_ip }}  jump
+    block: "{{ mac_hosts_entries }}"
   become: true
   when: not hosts_check.found
 
